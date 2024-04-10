@@ -142,15 +142,25 @@ where
   l._date>= current_date-30
 group by 1
 )
-, pages as (
+, category_pg as (
 select
-visit_id
- , case when event_type in ('market') and regexp_contains(url, "(?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as market_pg
- , case when event_type in ('category_page_hub') then 1 else 0 end as category_pg
- , case when event_type like ('%gift_mode%')  then 1 else 0 end as gift_mode_pg
- from 
-  etsy-data-warehouse-prod.weblog.events 
-where _date >=current_date-30
+  visit_id
+  from etsy-data-warehouse-prod.weblog.events where event_type in ('category_page_hub')
+)
+, market_pg as (
+select
+  visit_id
+  from etsy-data-warehouse-prod.weblog.events 
+  where
+     event_type in ('market') 
+     and regexp_contains(url, "(?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト")
+)
+, gift_mode_pg as (
+select
+  visit_id
+  from etsy-data-warehouse-prod.weblog.events 
+  where
+     event_type like ('%gift_mode%') 
 )
 , agg as (
 select 
@@ -158,22 +168,29 @@ select
   , a.visit_id as visit_id
   , a.total_gms
   , case when b.visit_id is not null then 1 else 0 end as gifty_view
-  , case when c.visit_id is not null and gift_mode_pg =1 then 1 else 0 end as gift_mode_view
-  , case when c.visit_id is not null and category_pg =1 then 1 else 0 end as category_view
-  , case when c.visit_id is not null and market_pg =1 then 1 else 0 end as market_view
+  , case when c.visit_id is not null then 1 else 0 end as gift_mode_view
+  , case when d.visit_id is not null then 1 else 0 end as market_view
+  , case when e.visit_id is not null then 1 else 0 end as category_view
 from 
   etsy-data-warehouse-dev.madelinecollins.web_visits_last_30_days a 
 left join
   gifty_visits b 
     using(visit_id)
-left join pages c
+left join gift_mode_pg c
   on a.visit_id=c.visit_id  
+left join market_pg d
+  on a.visit_id=d.visit_id  
+left join category_pg e
+  on a.visit_id=e.visit_id  
 )
 select
   platform
-  , count(distinct visit_id) as visits
-  , sum(total_gms) as gms
+  , count(distinct visit_id)
+  , sum(total_gms)
 from agg
+where gifty_view=1 or gift_mode_view=1
+group by 1
+
 where gifty_view=1 or gift_mode_view=1
 group by 1
 
