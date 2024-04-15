@@ -230,8 +230,26 @@ where (_date between '2019-01-01' and '2019-04-09')
 group by 1,2
 
 
---top gift queries by distinct visit count
+--visits w searches + transactions
+select
+is_gift
+, count(distinct qs.visit_id) as query_visits
+, count(distinct tv.visit_id) as transactions_visits
+from 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join  
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm 
+    USING (query)
+  left join 
+    etsy-data-warehouse-prod.transaction_mart.transactions_visits tv
+    on qs.visit_id=tv.visit_id
+-- where _date between "2024-01-01" and "2024-04-09"
+where _date between "2023-01-01" and "2023-04-09"
+group by 1 order by 2 desc
 
+
+
+--top gift queries by distinct visit count
 SELECT
   query
 	, count(distinct visit_id) as visits
