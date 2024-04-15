@@ -181,54 +181,92 @@ order by 5 desc
 SELECT
   '2024' as year
   , is_gift
-	, count(distinct visit_id)
-from `etsy-data-warehouse-prod.search.query_sessions_new` qs
-join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+	, count(distinct qs.visit_id) as query_visits
+  ,	count(distinct tv.visit_id) as transaction_visits
+from 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join 
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+left join 
+    etsy-data-warehouse-prod.transaction_mart.transactions_visits tv
+      on qs.visit_id=tv.visit_id
 where (_date between '2024-01-01' and '2024-04-09')
 group by 1,2
 UNION ALL 
 SELECT
-  '2023' as year
+   '2023' as year
   , is_gift
-	, count(distinct visit_id)
-from `etsy-data-warehouse-prod.search.query_sessions_new` qs
-join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+	, count(distinct qs.visit_id) as query_visits
+  ,	count(distinct tv.visit_id) as transaction_visits
+from 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join 
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+left join 
+    etsy-data-warehouse-prod.transaction_mart.transactions_visits tv
+      on qs.visit_id=tv.visit_id
 where (_date between '2023-01-01' and '2023-04-09')
 group by 1,2
 UNION ALL 
-SELECT
+select
   '2022' as year
   , is_gift
-	, count(distinct visit_id)
-from `etsy-data-warehouse-prod.search.query_sessions_new` qs
-join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+	, count(distinct qs.visit_id) as query_visits
+  ,	count(distinct tv.visit_id) as transaction_visits
+from 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join 
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+left join 
+    etsy-data-warehouse-prod.transaction_mart.transactions_visits tv
+      on qs.visit_id=tv.visit_id
 where (_date between '2022-01-01' and '2022-04-09')
 group by 1,2
 UNION ALL 
-SELECT
+select
   '2021' as year
   , is_gift
-	, count(distinct visit_id)from `etsy-data-warehouse-prod.search.query_sessions_new` qs
-join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+	, count(distinct qs.visit_id) as query_visits
+  ,	count(distinct tv.visit_id) as transaction_visits
+from 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join 
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+left join 
+    etsy-data-warehouse-prod.transaction_mart.transactions_visits tv
+      on qs.visit_id=tv.visit_id
 where (_date between '2021-01-01' and '2021-04-09')
 group by 1,2
 UNION ALL 
-SELECT
+select
   '2020' as year
   , is_gift
-	, count(distinct visit_id)from `etsy-data-warehouse-prod.search.query_sessions_new` qs
-join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+	, count(distinct qs.visit_id) as query_visits
+  ,	count(distinct tv.visit_id) as transaction_visits
+from 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join 
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+left join 
+    etsy-data-warehouse-prod.transaction_mart.transactions_visits tv
+      on qs.visit_id=tv.visit_id
 where (_date between '2020-01-01' and '2020-04-09')
 group by 1,2
 UNION ALL 
-SELECT
+select
   '2019' as year
   , is_gift
-	, count(distinct visit_id)from `etsy-data-warehouse-prod.search.query_sessions_new` qs
-join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+	, count(distinct qs.visit_id) as query_visits
+  ,	count(distinct tv.visit_id) as transaction_visits
+from 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join 
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+left join 
+    etsy-data-warehouse-prod.transaction_mart.transactions_visits tv
+      on qs.visit_id=tv.visit_id
 where (_date between '2019-01-01' and '2019-04-09')
 group by 1,2
-
 
 --visits w searches + transactions
 select
