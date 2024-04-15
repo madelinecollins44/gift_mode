@@ -128,6 +128,31 @@ group by 1,2
 ----------------------------------------------------
 GIFT SEARCHING BEHAVIOR 
 ----------------------------------------------------
+--find queries driving growth 
+with all_queries as (
+SELECT
+ query
+  , RANK() OVER (PARTITION BY query ORDER BY COUNT(DISTINCT visit_id) DESC) AS query_rank
+	, count(distinct case when _date between "2024-01-01" and "2024-04-09" then visit_id end) as visits2024
+  , count(distinct case when _date between "2023-01-01" and "2023-04-09" then visit_id end) as visits2023
+  , count(distinct case when _date between "2024-01-01" and "2024-04-09" then visit_id end)-count(distinct case when _date between "2023-01-01" and "2023-04-09" then visit_id end) as visits_diff
+FROM 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+JOIN 
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm 
+    USING (query)
+WHERE 
+  _date >= '2023-01-01'
+  and is_gift > 0
+group by 1
+order by 4 desc)
+select * from all_queries 
+where query_rank > 50 
+order by 4 desc
+
+
+
+	
 --yoy gift queries 
 SELECT
   '2024' as year
