@@ -145,8 +145,7 @@ WHERE
   _date >= '2023-01-01'
   and is_gift > 0
 group by 1
-order by 4 desc
-limit 10)
+order by 4 desc)
 select * from all_queries 
 where query_rank < 50 
 order by 4 desc
