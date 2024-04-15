@@ -132,7 +132,7 @@ GIFT SEARCHING BEHAVIOR
 with all_queries as (
 SELECT
  query
-  , RANK() OVER (PARTITION BY query ORDER BY COUNT(DISTINCT visit_id) DESC) AS query_rank
+  , rank() over (order by count(distinct visit_id) desc) as query_rank
 	, count(distinct case when _date between "2024-01-01" and "2024-04-09" then visit_id end) as visits2024
   , count(distinct case when _date between "2023-01-01" and "2023-04-09" then visit_id end) as visits2023
   , count(distinct case when _date between "2024-01-01" and "2024-04-09" then visit_id end)-count(distinct case when _date between "2023-01-01" and "2023-04-09" then visit_id end) as visits_diff
@@ -145,13 +145,11 @@ WHERE
   _date >= '2023-01-01'
   and is_gift > 0
 group by 1
-order by 4 desc)
-select * from all_queries 
-where query_rank > 50 
 order by 4 desc
-
-
-
+limit 10)
+select * from all_queries 
+where query_rank < 50 
+order by 4 desc
 	
 --yoy gift queries 
 SELECT
