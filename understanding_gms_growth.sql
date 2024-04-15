@@ -132,6 +132,12 @@ GIFT SEARCHING BEHAVIOR
 with all_queries as (
 SELECT
  query
+  , case 
+    when search_source like ('hp_%') then 'homepage'
+    when search_source like ('catnav%') then 'catnav'
+    when search_source like ('s2_qi%') then 'query_ingresses'
+    else split(search_source, '-')[safe_offset(0)]
+  end as search_source
   , rank() over (order by count(distinct visit_id) desc) as query_rank
 	, count(distinct case when _date between "2024-01-01" and "2024-04-09" then visit_id end) as visits2024
   , count(distinct case when _date between "2023-01-01" and "2023-04-09" then visit_id end) as visits2023
@@ -144,11 +150,11 @@ JOIN
 WHERE 
   _date >= '2023-01-01'
   and is_gift > 0
-group by 1
-order by 4 desc)
+group by 1,2
+)
 select * from all_queries 
 where query_rank < 50 
-order by 4 desc
+order by 6 desc
 	
 --yoy gift queries 
 SELECT
