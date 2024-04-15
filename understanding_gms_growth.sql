@@ -132,3 +132,63 @@ GIFT SEARCHING BEHAVIOR
 ----------------------------------------------------
 WHAT IS THE IMPACT OF LESS TIAG GMS?
 ----------------------------------------------------
+--tiag orders yoy
+select 
+  '2019' as year
+  , is_gift
+  , count(distinct transaction_id) as transactions
+from 
+  etsy-data-warehouse-prod.transaction_mart.all_transactions
+where 
+  (date between '2019-01-01' and '2019-04-09')
+group by 1,2
+union all 
+select 
+'2020' as year  
+  , is_gift
+  , count(distinct transaction_id) as transactions
+from 
+  etsy-data-warehouse-prod.transaction_mart.all_transactions
+where 
+  (date between '2020-01-01' and '2020-04-09')
+group by 1,2
+union all 
+select 
+'2021' as year
+  , is_gift
+  , count(distinct transaction_id) as transactions
+from 
+  etsy-data-warehouse-prod.transaction_mart.all_transactions
+where 
+  (date between '2021-01-01' and '2021-04-09')
+group by 1,2
+union all 
+select 
+'2022' as year
+  , is_gift
+  , count(distinct transaction_id) as transactions
+from 
+  etsy-data-warehouse-prod.transaction_mart.all_transactions
+where 
+  (date between '2022-01-01' and '2022-04-09')
+group by 1,2
+union all 
+select 
+'2023' as year
+  , is_gift
+  , count(distinct transaction_id) as transactions
+from 
+  etsy-data-warehouse-prod.transaction_mart.all_transactions
+where 
+  (date between '2023-01-01' and '2023-04-09')
+group by 1,2
+union all 
+select 
+'2024' as year
+  , is_gift
+  , count(distinct transaction_id) as transactions
+from 
+  etsy-data-warehouse-prod.transaction_mart.all_transactions
+where 
+  (date between '2024-01-01' and '2024-04-09')
+group by 1,2
