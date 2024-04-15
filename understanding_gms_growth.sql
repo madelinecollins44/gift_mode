@@ -128,7 +128,51 @@ group by 1,2
 ----------------------------------------------------
 GIFT SEARCHING BEHAVIOR 
 ----------------------------------------------------
-
+--yoy gift queries 
+  SELECT
+  '2024' as year
+	, count(distinct visit_id)
+from `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+where (_date between '2024-01-01' and '2024-04-09')
+and is_gift > 0
+UNION ALL 
+SELECT
+  '2023' as year
+	, count(distinct visit_id)
+from `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+where (_date between '2023-01-01' and '2023-04-09')
+and is_gift > 0
+UNION ALL 
+SELECT
+  '2022' as year
+	, count(distinct visit_id)
+from `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+where (_date between '2022-01-01' and '2022-04-09')
+and is_gift > 0
+UNION ALL 
+SELECT
+  '2021' as year
+	, count(distinct visit_id)from `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+where (_date between '2021-01-01' and '2021-04-09')
+and is_gift > 0
+UNION ALL 
+SELECT
+  '2020' as year
+	, count(distinct visit_id)from `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+where (_date between '2020-01-01' and '2020-04-09')
+and is_gift > 0
+UNION ALL 
+SELECT
+  '2019' as year
+	, count(distinct visit_id)from `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+where (_date between '2019-01-01' and '2019-04-09')
+and is_gift > 0
 ----------------------------------------------------
 WHAT IS THE IMPACT OF LESS TIAG GMS?
 ----------------------------------------------------
