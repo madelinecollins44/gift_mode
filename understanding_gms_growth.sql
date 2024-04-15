@@ -250,17 +250,39 @@ group by 1 order by 2 desc
 
 
 --top gift queries by distinct visit count
+with all_queries as (
 SELECT
-  query
-	, count(distinct visit_id) as visits
-FROM `etsy-data-warehouse-prod.search.query_sessions_new` qs
-JOIN `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
--- WHERE _date between "2024-01-01" and "2024-04-09"
-WHERE _date between "2023-01-01" and "2023-04-09"
-and is_gift > 0
-group by 1 order by 2 desc limit 10
+ query
+  , rank() over (order by count(distinct visit_id) desc) as query_rank
+	, count(distinct case when _date between "2024-01-01" and "2024-04-09" then visit_id end) as visits2024
+  , count(distinct case when _date between "2023-01-01" and "2023-04-09" then visit_id end) as visits2023
+  , count(distinct case when _date between "2024-01-01" and "2024-04-09" then visit_id end)-count(distinct case when _date between "2023-01-01" and "2023-04-09" then visit_id end) as visits_diff
+FROM 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+JOIN 
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm 
+    USING (query)
+WHERE 
+  _date >= '2023-01-01'
+  and is_gift > 0
+group by 1
+)
+select * from all_queries 
+where query_rank < 50 
+order by 5 desc
 
-
+--queries by search source
+select 
+   case 
+    when search_source like ('hp_%') then 'homepage'
+    when search_source like ('catnav%') then 'catnav'
+    when search_source like ('s2_qi%') then 'query_ingresses'
+    else split(search_source, '-')[safe_offset(0)]
+  end as search_source
+, count(distinct visit_id)
+from etsy-data-warehouse-prod.search.events
+where _date between "2024-01-01" and "2024-04-09"
+group by 1
 
 
 ----------------------------------------------------
