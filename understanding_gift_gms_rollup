@@ -438,7 +438,7 @@ from
 
 ---yoy gms metrics: gift title purchases 
 --get all visits + year that made transaction with 'gift' in listing title since 2020
- with gift_title_visits as (
+ create or replace table  etsy-data-warehouse-dev.madelinecollins.gift_title_transaction_visits as (
  select
   extract(year from b.date) as year
   , b.visit_id
@@ -456,8 +456,55 @@ from
   inner join 
     etsy-data-warehouse-prod.transaction_mart.transactions_visits b
       using (transaction_id)
- )
---for each year, get # of visits, acvv, conversion rate 
+ );
+
+--2023/ 2024 YOY CHANGE  
+with yearly_metrics as (
+select
+  extract(year from v._date) as year
+  , count(distinct v.visit_id) as total_visits
+  , count(distinct gtv.visit_id) as gift_title_visits 
+  , avg(v.total_gms) as total_acvv
+  , avg(case when gtv.visit_id is not null then v.total_gms end) as gift_title_acvv
+  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct visit_id) as total_conversion_rate
+  , count(distinct case when gtv.visit_id is not null and v.converted=1 then v.visit_id end)/ count(distinct visit_id) as gift_title_conversion_rate
+  , sum(v.converted)/ count(distinct visit_id) as total_conversion_rate_2
+  , sum(case when gtv.visit_id is not null then v.converted end)/ count(distinct visit_id) as gift_title_conversion_rate_2
+from 
+  etsy-data-warehouse-prod.weblog.visits v
+left join 
+  etsy-data-warehouse-dev.madelinecollins.gift_title_transaction_visits gtv
+  using (visit_id)
+where 
+  v._date between '2023-01-01' and '2023-04-09'
+  or v._date between '2024-01-01' and '2024-04-09'
+group by 1
+)
+SELECT
+  a.year AS current_year
+  , a.gift_title_visits AS current_year_visits
+  , b.gift_title_visits AS previous_year_visits
+  , a.gift_title_acvv AS current_year_acvv
+  , b.gift_title_acvv AS previous_year_acvv
+  , a.gift_title_conversion_rate AS current_year_conversion_rate
+  , b.gift_title_conversion_rate AS previous_year_conversion_rate
+  , a.gift_title_conversion_rate_2 AS current_year_conversion_rate
+  , b.gift_title_conversion_rate_2 AS previous_year_conversion_rate
+  , ((a.gift_title_visits - b.gift_title_visits) / b.gift_title_visits) * 100 AS yoy_growth_visits  
+  , ((a.gift_title_acvv - b.gift_title_acvv) / b.gift_title_acvv) * 100 AS yoy_growth_acvv
+  , ((a.gift_title_conversion_rate - b.gift_title_conversion_rate) / b.gift_title_conversion_rate) * 100 AS yoy_growth_conversion_rate
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+group by 1,2,3,4,5,6,7,8,9
+ORDER BY
+  a.year;
+
+
+---EVERY OTHER YOY CHANGE 
 , yearly_metrics as (
 select
   extract(year from v._date) as year
