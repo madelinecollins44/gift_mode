@@ -414,38 +414,22 @@ END
 --get table to get yoy for what i need from 2024 
 select 
   date_trunc(date, year) as year
-  -- yy metrics 
-	, sum(total_gms) as total_gms
-	, sum(total_gift_gms) as total_gift_gms
-	, sum(marked_as_gift_gms) as marked_as_gift_gms  
-	, sum(gift_search_gms) as gift_search_gms   
-	, sum(gift_title_gms) as gift_title_gms  
-	, sum(all_orders) as all_orders   
-	, sum(all_gift_orders) as all_gift_orders  
-	, sum(marked_as_gift_orders) as marked_as_gift_orders  
-	, sum(gift_search_orders) as gift_search_orders 
-	, sum(gift_title_orders) as gift_title_orders  
-	, sum(all_transactions) as all_transactions   
-	, sum(all_gift_transactions) as all_gift_transactions 
-	, sum(marked_as_gift_transactions) as marked_as_gift_transactions  
-	, sum(gift_search_transactions) as gift_search_transactions  
-	, sum(gift_title_transactions) as gift_title_transactions 
-  --dly metrics 
-  , sum(total_gms_dly) as total_gms_dly
-	, sum(total_gift_gms_dly) as total_gift_gms_dly
-  , sum(marked_as_gift_gms_dly) as marked_as_gift_gms_dly
-  , sum(gift_search_gms_dly)  as gift_search_gms_dly 
-  , sum(gift_title_gms_dly) as gift_title_gms_dly
-  , sum(all_orders_dly) as all_orders_dly
-  , sum(all_gift_orders_dly) as all_gift_orders_dly
-  , sum(marked_as_gift_orders_dly) as marked_as_gift_orders_dly
-  , sum(gift_search_orders_dly) as gift_search_orders_dly
-  , sum(gift_title_orders_dly) as gift_title_orders_dly
-  , sum(all_transactions_dly) as all_transactions_dly
-  , sum(all_gift_transactions_dly) as all_gift_transactions_dly
-  , sum(marked_as_gift_transactions_dly) as marked_as_gift_transactions_dly
-  , sum(gift_search_transactions_dly) as gift_search_transactions_dly
-  , sum(gift_title_transactions_dly) as gift_title_transactions_dly
+  -- yoy
+	, ((sum(total_gms)-sum(total_gms_dly))/(nullif(sum(total_gms_dly),0)))*100   as total_gms_yoy
+	, ((sum(total_gift_gms)-sum(total_gift_gms_dly))/(nullif(sum(total_gift_gms_dly),0)))*100 as total_gift_gms_yoy
+	, ((sum(marked_as_gift_gms)-sum(marked_as_gift_gms_dly))/(nullif(sum(marked_as_gift_gms_dly),0)))*100 as marked_as_gift_gms  
+	, ((sum(gift_search_gms)-sum(gift_search_gms_dly))/(nullif(sum(gift_search_gms_dly),0)))*100 as gift_search_gms   
+	, ((sum(gift_title_gms)-sum(gift_title_gms_dly))/(nullif(sum(gift_title_gms_dly),0)))*100 as gift_title_gms  
+	, ((sum(all_orders)-sum(all_orders_dly))/(nullif(sum(all_orders_dly),0)))*100 as all_orders   
+	, ((sum(all_gift_orders)-sum(all_gift_orders_dly))/(nullif(sum(all_gift_orders_dly),0)))*100 as all_gift_orders  
+	, ((sum(marked_as_gift_orders)-sum(marked_as_gift_orders_dly))/(nullif(sum(marked_as_gift_orders_dly),0)))*100 as marked_as_gift_orders  
+	, ((sum(gift_search_orders)-sum(gift_search_orders_dly))/(nullif(sum(gift_search_orders_dly),0)))*100 as gift_search_orders 
+	, ((sum(gift_title_orders)-sum(gift_title_orders_dly))/(nullif(sum(gift_title_orders_dly),0)))*100 as gift_title_orders  
+	, ((sum(all_transactions)-sum(all_transactions_dly))/(nullif(sum(all_transactions_dly),0)))*100 as all_transactions   
+	, ((sum(all_gift_transactions)-sum(all_gift_transactions_dly))/(nullif(sum(all_gift_transactions_dly),0)))*100 as all_gift_transactions 
+	, ((sum(marked_as_gift_transactions)-sum(marked_as_gift_transactions_dly))/(nullif(sum(marked_as_gift_transactions_dly),0)))*100 as marked_as_gift_transactions  
+	, ((sum(gift_search_transactions)-sum(gift_search_transactions_dly))/(nullif(sum(gift_search_transactions_dly),0)))*100 as gift_search_transactions  
+	, ((sum(gift_title_transactions)-sum(gift_title_transactions_dly))/(nullif(sum(gift_title_transactions_dly),0)))*100 as gift_title_transactions 
 from 
    `etsy-data-warehouse-dev.madelinecollins.gift_gms_metrics`
   where date >= '2020-01-01'
