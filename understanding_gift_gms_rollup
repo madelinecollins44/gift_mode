@@ -459,6 +459,21 @@ from
       using (transaction_id)
  );
 
+create or replace table  etsy-data-warehouse-dev.madelinecollins.gift_title_views as (
+select 
+  extract(year from _date) as year
+  , visit_id
+  , max(case when regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end) as gift_title
+from  
+  etsy-data-warehouse-prod.analytics.listing_views 
+inner join 
+  etsy-data-warehouse-prod.listing_mart.listing_titles b
+    using (listing_id)
+where 
+  _date >= '2020-01-01'
+group by 1,2
+);
+
 --2023/ 2024 YOY CHANGE  
 with yearly_metrics as (
 select
