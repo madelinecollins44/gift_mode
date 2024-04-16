@@ -476,6 +476,7 @@ group by 1,2
 
 ---YOY CHANGE CALCULATION
 
+
 --for each year, get # of visits, acvv, conversion rate 
 with yearly_metrics as (
 select
@@ -484,8 +485,8 @@ select
   , count(distinct gtv.visit_id) as gift_title_visits 
   , sum(v.total_gms)/count(distinct case when v.converted=1 then v.visit_id end) as total_acvv
   , sum(case when gtv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then gtv.visit_id end) as gift_title_acvv
-  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct views.visit_id) as total_conversion_rate
-  , count(distinct case when gtv.visit_id is not null and v.converted=1 then v.visit_id end)/ count(distinct case when views.gift_title=1 then views.visit_id end) as gift_title_conversion_rate
+  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct views.visit_id) as total_conversion_rate --any visit that converted/ any visit that saw a listing
+  , count(distinct case when gtv.visit_id is not null and v.converted=1 then v.visit_id end)/ count(distinct case when views.gift_title=1 then views.visit_id end) as gift_title_conversion_rate --any visit that bought a listing with gift in title / any visit that saw a gift listing
 from 
   etsy-data-warehouse-prod.weblog.visits v
 left join 
