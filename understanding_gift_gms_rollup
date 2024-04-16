@@ -450,3 +450,65 @@ from
    `etsy-data-warehouse-dev.madelinecollins.gift_gms_metrics`
   where date >= '2020-01-01'
   group by 1 
+
+
+---yoy gms metrics: gift title purchases 
+--get all visits + year that made transaction with 'gift' in listing title since 2020
+ with gift_title_visits as (
+ select
+  extract(year from b.date) as year
+  , b.visit_id
+from 
+  (select 
+   transaction_id 
+  from 
+     etsy-data-warehouse-prod.transaction_mart.all_transactions a
+   inner join 
+    etsy-data-warehouse-prod.listing_mart.listing_titles b
+       using (listing_id)
+  where 
+     date >= '2020-01-01'
+    and regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト")) a
+  inner join 
+    etsy-data-warehouse-prod.transaction_mart.transactions_visits b
+      using (transaction_id)
+ )
+--for each year, get # of visits, acvv, conversion rate 
+, yearly_metrics as (
+select
+  extract(year from v._date) as year
+  , count(distinct v.visit_id) as total_visits
+  , count(distinct gtv.visit_id) as gift_title_visits 
+  , avg(v.total_gms) as total_acvv
+  , avg(case when gtv.visit_id is not null then v.total_gms end) as gift_title_acvv
+  , avg(v.converted) as total_conversion_rate
+  , avg(case when gtv.visit_id is not null then v.converted end) as gift_title_conversion_rate
+from 
+  etsy-data-warehouse-prod.weblog.visits v
+left join 
+  gift_title_visits gtv
+  using (visit_id)
+where 
+  v._date >= '2020-01-01'
+group by 1
+)
+SELECT
+  a.year AS current_year
+  , a.gift_title_visits AS current_year_visits
+  , b.gift_title_visits AS previous_year_visits
+  , a.gift_title_acvv AS current_year_acvv
+  , b.gift_title_acvv AS previous_year_acvv
+  , a.gift_title_conversion_rate AS current_year_conversion_rate
+  , b.gift_title_conversion_rate AS previous_year_conversion_rate
+  , ((a.gift_title_visits - b.gift_title_visits) / b.gift_title_visits) * 100 AS yoy_growth_visits  
+  , ((a.gift_title_acvv - b.gift_title_acvv) / b.gift_title_acvv) * 100 AS yoy_growth_acvv
+  , ((a.gift_title_conversion_rate - b.gift_title_conversion_rate) / b.gift_title_conversion_rate) * 100 AS yoy_growth_conversion_rate
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+group by 1,2,3,4,5,6,7 
+ORDER BY
+  a.year;
