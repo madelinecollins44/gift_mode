@@ -474,24 +474,28 @@ where
 group by 1,2
 );
 
---2023/ 2024 YOY CHANGE  
+---YOY CHANGE CALCULATION
 with yearly_metrics as (
 select
-    extract(year from v._date) as year
+  extract(year from v._date) as year
   , count(distinct v.visit_id) as total_visits
   , count(distinct gtv.visit_id) as gift_title_visits 
   , sum(v.total_gms)/count(distinct case when v.converted=1 then v.visit_id end) as total_acvv
   , sum(case when gtv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then gtv.visit_id end) as gift_title_acvv
-  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct case when v.converted=1visit_id) as total_conversion_rate
-  , count(distinct case when gtv.visit_id is not null and v.converted=1 then v.visit_id end)/ count(distinct visit_id) as gift_title_conversion_rate
+  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct views.visit_id) as total_conversion_rate
+  , count(distinct case when gtv.visit_id is not null and v.converted=1 then v.visit_id end)/ count(distinct case when views.gift_title=1 then gift_views.visit_id end) as gift_title_conversion_rate
 from 
   etsy-data-warehouse-prod.weblog.visits v
 left join 
   etsy-data-warehouse-dev.madelinecollins.gift_title_transaction_visits gtv
   using (visit_id)
+left join 
+  etsy-data-warehouse-dev.madelinecollins.gift_title_views views
+    on v.visit_id=views.visit_id
 where 
-  v._date between '2023-01-01' and '2023-04-09'
-  or v._date between '2024-01-01' and '2024-04-09'
+  v._date >= '2020-01-01'
+--  v._date between '2023-01-01' and '2023-04-09' ---------USE THESE NEXT TWO LINES TO FIND YOY FOR 2024
+--  or v._date between '2024-01-01' and '2024-04-09'
 group by 1
 )
 SELECT
@@ -502,8 +506,6 @@ SELECT
   , b.gift_title_acvv AS previous_year_acvv
   , a.gift_title_conversion_rate AS current_year_conversion_rate
   , b.gift_title_conversion_rate AS previous_year_conversion_rate
-  , a.gift_title_conversion_rate_2 AS current_year_conversion_rate
-  , b.gift_title_conversion_rate_2 AS previous_year_conversion_rate
   , ((a.gift_title_visits - b.gift_title_visits) / b.gift_title_visits) * 100 AS yoy_growth_visits  
   , ((a.gift_title_acvv - b.gift_title_acvv) / b.gift_title_acvv) * 100 AS yoy_growth_acvv
   , ((a.gift_title_conversion_rate - b.gift_title_conversion_rate) / b.gift_title_conversion_rate) * 100 AS yoy_growth_conversion_rate
@@ -517,37 +519,50 @@ group by 1,2,3,4,5,6,7,8,9
 ORDER BY
   a.year;
 
-
----EVERY OTHER YOY CHANGE 
+------------------------------------------------------------------------
+LISTING IN GIFT TITLE VS ACTIVE LISTINGS YOY
+------------------------------------------------------------------------
+with titles as (
+select 
+extract(year from date(timestamp(v.creation_tsz))) as year
+, v.listing_id
+, case when regexp_contains(v.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
+, case when regexp_contains(l.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title_now
+from
+  `etsy-data-warehouse-prod.schlep_views.transactions_vw` v
+left join
+  `etsy-data-warehouse-prod.etsy_shard.listings` l 
+    on v.listing_id = l.listing_id
+where date(timestamp(v.creation_tsz)) >= '2020-01-01'
+   --date(timestamp(v.creation_tsz)) between '2023-01-01' and '2023-04-09' ---------USE THESE NEXT TWO LINES TO FIND YOY FOR 2024
+   -- or  date(timestamp(v.creation_tsz)) between '2024-01-01' and '2024-04-09'
+)
 , yearly_metrics as (
-select
-   extract(year from v._date) as year
-  , count(distinct v.visit_id) as total_visits
-  , count(distinct gtv.visit_id) as gift_title_visits 
-  , sum(v.total_gms)/count(distinct case when v.converted=1 then v.visit_id end) as total_acvv
-  , sum(case when gtv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then gtv.visit_id end) as gift_title_acvv
-  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct v.visit_id) as total_conversion_rate
-  , count(distinct case when gtv.visit_id is not null and v.converted=1 then v.visit_id end)/ count(distinct visit_id) as gift_title_conversion_rate
+select 
+  year
+  , count(distinct listing_id) as purchased_listings
+  , count(distinct case when gift_title = 1 then listing_id end) as gift_title_transaction
+  , count(distinct case when gift_title_now=1 then listing_id end) as gift_title_now
+  , count(distinct case when gift_title = 0 and gift_title_now=1 then listing_id end) as gift_title_change
 from 
-  etsy-data-warehouse-prod.weblog.visits v
-left join 
-  gift_title_visits gtv
-  using (visit_id)
-where 
-  v._date >= '2020-01-01'
+  titles 
 group by 1
 )
-SELECT
+select
   a.year AS current_year
-  , a.gift_title_visits AS current_year_visits
-  , b.gift_title_visits AS previous_year_visits
-  , a.gift_title_acvv AS current_year_acvv
-  , b.gift_title_acvv AS previous_year_acvv
-  , a.gift_title_conversion_rate AS current_year_conversion_rate
-  , b.gift_title_conversion_rate AS previous_year_conversion_rate
-  , ((a.gift_title_visits - b.gift_title_visits) / b.gift_title_visits) * 100 AS yoy_growth_visits  
-  , ((a.gift_title_acvv - b.gift_title_acvv) / b.gift_title_acvv) * 100 AS yoy_growth_acvv
-  , ((a.gift_title_conversion_rate - b.gift_title_conversion_rate) / b.gift_title_conversion_rate) * 100 AS yoy_growth_conversion_rate
+  , a.purchased_listings AS current_year_purchased_listings
+  , b.purchased_listings AS previous_year_purchased_listings
+  , a.gift_title_transaction AS current_year_gift_title_transaction
+  , b.gift_title_transaction AS previous_year_gift_title_transaction
+  , a.gift_title_now AS current_year_gift_title_now
+  , b.gift_title_now AS previous_year_gift_title_now
+  , a.gift_title_change AS current_year_gift_title_change
+  , b.gift_title_change AS previous_year_gift_title_change
+  , ((a.purchased_listings - b.purchased_listings) / b.purchased_listings) * 100 AS yoy_purchased_listings
+  , ((a.gift_title_transaction - b.gift_title_transaction) / b.gift_title_transaction) * 100 AS yoy_gift_title_transaction
+  , ((a.gift_title_now - b.gift_title_now) / b.gift_title_now) * 100 AS yoy_gift_title_now
+  , ((a.gift_title_change - b.gift_title_change) / b.gift_title_change) * 100 AS yoy_gift_title_change
+
 FROM
   yearly_metrics a
 JOIN
