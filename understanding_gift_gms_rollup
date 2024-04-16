@@ -1,0 +1,452 @@
+--rerun rollup to go back to 2019
+BEGIN 
+
+-- create table of base GMS + gift GMS classifiers according to our definition of gift GMS
+
+create or replace temporary table purchases as (
+select
+	date(r.creation_tsz) as date 
+	, tv.visit_id
+	, tv.platform_app as platform 
+	, tv.canonical_region as region 
+	, tv.top_channel
+	, r.receipt_id
+	, a.transaction_id 
+	, v.title
+	, a.listing_id
+	, t.trans_gms_net 
+	, a.is_gift 
+	, t.is_gift_card
+	, a.requested_gift_wrap
+	, a.trans_gift_wrap_price
+	, r.is_gift_message
+	, r.prior_receipt_tsz
+	, case when g.receipt_id is not null then 1 else 0 end as is_recipient_view
+	, case when regexp_contains(title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
+from 
+	`etsy-data-warehouse-prod`.transaction_mart.all_receipts r 
+join
+	`etsy-data-warehouse-prod`.transaction_mart.all_transactions a 
+using(receipt_id)
+left join 
+	`etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans t 
+using(transaction_id)
+inner join 
+	`etsy-data-warehouse-prod`.transaction_mart.transactions_visits tv 
+on 
+	a.transaction_id = tv.transaction_id
+left join 
+	`etsy-data-warehouse-prod`.etsy_shard.gift_receipt_options g 
+on 
+	r.receipt_id = g.receipt_id
+left join 
+	`etsy-data-warehouse-prod.schlep_views.transactions_vw` v 
+on 
+	v.transaction_id = a.transaction_id
+where 
+	a.date >= current_date - 1460
+);
+
+
+create or replace temporary table gift_searches as (
+SELECT
+	distinct _date, visit_id
+FROM `etsy-data-warehouse-prod.search.query_sessions_new` qs
+JOIN `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+WHERE 
+	_date >= current_date - 1460
+and is_gift > 0
+)
+;
+
+create or replace temporary table gift_card_purchasing as (
+select 
+	a.date 
+	, a.receipt_id 
+	, a.transaction_id 
+	, coalesce(max(u.amount_start_usd),0) as amount_start_usd
+from 
+	purchases  a 
+join 
+	`etsy-data-warehouse-prod.etsy_payments.giftcards` p
+on 
+	a.transaction_id = p.purchase_transaction_id
+left join 
+	`etsy-data-warehouse-prod.rollups.giftcard_usage` u 
+on 
+	p.giftcard_id = u.giftcard_id
+group by 1,2,3
+)
+;
+
+create or replace temporary table almost_agg_metrics as (
+select 
+	a.date 
+	, platform 
+	, region 
+	, visit_id
+  	, receipt_id
+  	, case when prior_receipt_tsz is null then 1 else 0 end as new_buyer
+	--GMS metrics
+	, sum(trans_gms_net) as total_gms 
+	, sum(case when is_gift > 0 or gift_title > 0 or b.visit_id is not null then trans_gms_net end) as total_gift_gms 
+	, sum(case when is_gift > 0 then trans_gms_net end) as marked_as_gift_gms 
+	, sum(case when b.visit_id is not null then trans_gms_net end) as gift_search_gms 
+	, sum(case when gift_title > 0 then trans_gms_net end) as gift_title_gms 
+	, coalesce(sum(trans_gift_wrap_price),0) as gift_wrap_gms
+	, coalesce(sum(c.amount_start_usd),0) as gift_card_purchase_value
+	, sum(case when is_recipient_view > 0 then trans_gms_net end) as gift_recipient_view_gms
+	--orders
+	, count(distinct a.receipt_id) as all_orders
+	, count(distinct case when is_gift > 0 or gift_title > 0 or b.visit_id is not null then a.receipt_id end) as all_gift_orders 
+	, count(distinct case when is_gift > 0 then a.receipt_id end) as marked_as_gift_orders 
+	, count(distinct case when b.visit_id is not null then a.receipt_id end) as gift_search_orders
+	, count(distinct case when gift_title > 0 then a.receipt_id end) as gift_title_orders
+	, count(distinct case when is_gift_message > 0 then a.receipt_id end) as gift_message_orders
+	, count(distinct case when requested_gift_wrap > 0 then a.receipt_id end) as gift_wrap_orders
+	, count(distinct case when is_gift_card > 0 then a.receipt_id end) as gift_card_orders
+	, count(distinct case when is_recipient_view > 0 then a.receipt_id end) as gift_recipient_view_orders
+	--transactions
+	, count(distinct transaction_id) as all_transactions
+	, count(distinct case when is_gift > 0 or gift_title > 0 or b.visit_id is not null then transaction_id end) as all_gift_transactions 
+	, count(distinct case when is_gift > 0 then transaction_id end) as marked_as_gift_transactions 
+	, count(distinct case when b.visit_id is not null then transaction_id end) as gift_search_transactions
+	, count(distinct case when gift_title > 0 then transaction_id end) as gift_title_transactions
+	, count(distinct case when is_gift_message > 0 then transaction_id end) as gift_message_transactions
+	, count(distinct case when requested_gift_wrap > 0 then transaction_id end) as gift_wrap_transactions
+from 
+	purchases a
+left join 
+	gift_searches b
+using(visit_id)
+left join 
+	gift_card_purchasing c
+using(date, receipt_id, transaction_id)
+group by 1,2,3,4,5,6
+)
+;
+
+create or replace temporary table gift_cross_join as (
+  select 
+  a.*
+  ,b.external_source_decay_all
+  ,c.top_channel
+  ,c.second_channel
+  ,c.third_channel
+  ,c.utm_medium
+  ,c.utm_campaign
+  from almost_agg_metrics a
+  left join `etsy-data-warehouse-prod.buyatt_mart.attr_by_browser` b
+    on a.visit_id = b.buy_visit_id
+    and a.receipt_id=b.receipt_id
+  left join `etsy-data-warehouse-prod.buyatt_mart.visits` c
+    on b.o_visit_id = c.visit_id    
+  where cast(b.receipt_timestamp as date)>= current_date - 1460
+        and cast(c._date as date)>= current_date - 1460
+);
+
+
+create or replace temporary table agg_metrics as (
+select
+  date 
+	, platform 
+	, region 
+	, top_channel
+	, second_channel
+	, third_channel
+	, utm_medium
+	, utm_campaign
+	, new_buyer
+	--GMS metrics
+	, sum(total_gms*external_source_decay_all) as total_gms 
+	, sum(total_gift_gms*external_source_decay_all) as total_gift_gms 
+	, sum(marked_as_gift_gms*external_source_decay_all) as marked_as_gift_gms 
+	, sum(gift_search_gms*external_source_decay_all) as gift_search_gms 
+	, sum(gift_title_gms*external_source_decay_all) as gift_title_gms 
+	, sum(gift_wrap_gms*external_source_decay_all) as gift_wrap_gms
+	, sum(gift_card_purchase_value*external_source_decay_all) as gift_card_purchase_value
+	, sum(gift_recipient_view_gms*external_source_decay_all) as gift_recipient_view_gms
+	--orders
+	, sum(all_orders*external_source_decay_all) as all_orders
+	, sum(all_gift_orders*external_source_decay_all) as all_gift_orders 
+	, sum(marked_as_gift_orders*external_source_decay_all) as marked_as_gift_orders 
+	, sum(gift_search_orders*external_source_decay_all) as gift_search_orders
+	, sum(gift_title_orders*external_source_decay_all) as gift_title_orders
+	, sum(gift_message_orders*external_source_decay_all) as gift_message_orders
+	, sum(gift_wrap_orders*external_source_decay_all) as gift_wrap_orders
+	, sum(gift_card_orders*external_source_decay_all) as gift_card_orders
+	, sum(gift_recipient_view_orders*external_source_decay_all) as gift_recipient_view_orders
+	--transactions
+	, sum(all_transactions*external_source_decay_all) as all_transactions
+	, sum(all_gift_transactions*external_source_decay_all) as all_gift_transactions 
+	, sum(marked_as_gift_transactions*external_source_decay_all) as marked_as_gift_transactions 
+	, sum(gift_search_transactions*external_source_decay_all) as gift_search_transactions
+	, sum(gift_title_transactions*external_source_decay_all) as gift_title_transactions
+	, sum(gift_message_transactions*external_source_decay_all) as gift_message_transactions
+	, sum(gift_wrap_transactions*external_source_decay_all) as gift_wrap_transactions
+  from gift_cross_join
+  group by 1,2,3,4,5,6,7,8,9
+);
+
+
+-- YY metrics
+
+create or replace table `etsy-data-warehouse-dev.madelinecollins.gift_gms_metrics` as (
+with tmp as (
+select 
+	date 
+	, platform 
+	, region 
+	, top_channel
+	, second_channel
+	, third_channel
+	, utm_medium
+	, utm_campaign
+	, new_buyer 
+	--GMS metrics
+	, total_gms 
+	, total_gift_gms 
+	, marked_as_gift_gms 
+	, gift_search_gms 
+	, gift_title_gms 
+	, gift_wrap_gms
+	, gift_card_purchase_value
+	, gift_recipient_view_gms
+	--orders
+	, all_orders
+	, all_gift_orders 
+	, marked_as_gift_orders 
+	, gift_search_orders
+	, gift_title_orders
+	, gift_message_orders
+	, gift_wrap_orders
+	, gift_card_orders
+	, gift_recipient_view_orders
+	--transactions
+	, all_transactions
+	, all_gift_transactions 
+	, marked_as_gift_transactions 
+	, gift_search_transactions
+	, gift_title_transactions
+	, gift_message_transactions
+	, gift_wrap_transactions
+	, "a" as flag 
+from 
+	agg_metrics a
+union all
+select
+	date_add(date, interval 52 WEEK) AS date
+	, platform 
+	, region 
+	, top_channel
+  	, second_channel
+  	, third_channel
+  	, utm_medium
+  	, utm_campaign
+	, new_buyer 
+	--GMS metrics
+	, total_gms 
+	, total_gift_gms 
+	, marked_as_gift_gms 
+	, gift_search_gms 
+	, gift_title_gms 
+	, gift_wrap_gms
+	, gift_card_purchase_value
+	, gift_recipient_view_gms
+	--orders
+	, all_orders
+	, all_gift_orders 
+	, marked_as_gift_orders 
+	, gift_search_orders
+	, gift_title_orders
+	, gift_message_orders
+	, gift_wrap_orders
+	, gift_card_orders
+	, gift_recipient_view_orders
+	--transactions
+	, all_transactions
+	, all_gift_transactions 
+	, marked_as_gift_transactions 
+	, gift_search_transactions
+	, gift_title_transactions
+	, gift_message_transactions
+	, gift_wrap_transactions
+	, "b" as flag 
+from 
+	agg_metrics b
+WHERE date_add(b.date, interval 52 WEEK) <= current_date - 1
+union all 
+select
+	date_add(date, interval 1 year) AS date
+	, platform 
+	, region 
+	, top_channel
+	, second_channel
+	, third_channel
+	, utm_medium
+	, utm_campaign
+	, new_buyer 
+	--GMS metrics
+	, total_gms 
+	, total_gift_gms 
+	, marked_as_gift_gms 
+	, gift_search_gms 
+	, gift_title_gms 
+	, gift_wrap_gms
+	, gift_card_purchase_value
+	, gift_recipient_view_gms
+	--orders
+	, all_orders
+	, all_gift_orders 
+	, marked_as_gift_orders 
+	, gift_search_orders
+	, gift_title_orders
+	, gift_message_orders
+	, gift_wrap_orders
+	, gift_card_orders
+	, gift_recipient_view_orders
+	--transactions
+	, all_transactions
+	, all_gift_transactions 
+	, marked_as_gift_transactions 
+	, gift_search_transactions
+	, gift_title_transactions
+	, gift_message_transactions
+	, gift_wrap_transactions
+	, "c" as flag 
+from 
+	agg_metrics b
+WHERE date_add(b.date, interval 1 year) <= current_date - 1
+)
+select
+	date 
+	, platform 
+	, region 
+	, top_channel
+	, second_channel
+	, third_channel
+	, utm_medium
+	, utm_campaign
+	, new_buyer
+	--TY metrics
+	, coalesce(sum(case when flag = "a" then total_gms end),0) as total_gms
+	, coalesce(sum(case when flag = "a" then total_gift_gms end),0) as total_gift_gms 
+	, coalesce(sum(case when flag = "a" then marked_as_gift_gms end),0) as marked_as_gift_gms 
+	, coalesce(sum(case when flag = "a" then gift_search_gms end),0) as gift_search_gms 
+	, coalesce(sum(case when flag = "a" then gift_title_gms end),0) as gift_title_gms
+	, coalesce(sum(case when flag = "a" then gift_wrap_gms end),0) as gift_wrap_gms
+	, coalesce(sum(case when flag = "a" then gift_card_purchase_value end),0) as gift_card_purchase_value
+	, coalesce(sum(case when flag = "a" then gift_recipient_view_gms end),0) as gift_recipient_view_gms
+	, coalesce(sum(case when flag = "a" then all_orders end),0) as all_orders 
+	, coalesce(sum(case when flag = "a" then all_gift_orders end),0) as all_gift_orders
+	, coalesce(sum(case when flag = "a" then marked_as_gift_orders end),0) as marked_as_gift_orders
+	, coalesce(sum(case when flag = "a" then gift_search_orders end),0) as gift_search_orders
+	, coalesce(sum(case when flag = "a" then gift_title_orders end),0) as gift_title_orders
+	, coalesce(sum(case when flag = "a" then gift_message_orders end),0) as gift_message_orders 
+	, coalesce(sum(case when flag = "a" then gift_wrap_orders end),0) as gift_wrap_orders
+	, coalesce(sum(case when flag = "a" then gift_card_orders end),0) as gift_card_orders
+	, coalesce(sum(case when flag = "a" then gift_recipient_view_orders end),0) as gift_recipient_view_orders
+	, coalesce(sum(case when flag = "a" then all_transactions end),0) as all_transactions 
+	, coalesce(sum(case when flag = "a" then all_gift_transactions end),0) as all_gift_transactions
+	, coalesce(sum(case when flag = "a" then marked_as_gift_transactions end),0) as marked_as_gift_transactions
+	, coalesce(sum(case when flag = "a" then gift_search_transactions end),0) as gift_search_transactions
+	, coalesce(sum(case when flag = "a" then gift_title_transactions end),0) as gift_title_transactions
+	, coalesce(sum(case when flag = "a" then gift_message_transactions end),0) as gift_message_transactions
+	, coalesce(sum(case when flag = "a" then gift_wrap_transactions end),0) as gift_wrap_transactions
+	--DLY Metrics 
+	, coalesce(sum(case when flag = "b" then total_gms end),0) as total_gms_dly
+	, coalesce(sum(case when flag = "b" then total_gift_gms end),0) as total_gift_gms_dly
+	, coalesce(sum(case when flag = "b" then marked_as_gift_gms end),0) as marked_as_gift_gms_dly
+	, coalesce(sum(case when flag = "b" then gift_search_gms end),0) as gift_search_gms_dly 
+	, coalesce(sum(case when flag = "b" then gift_title_gms end),0) as gift_title_gms_dly
+	, coalesce(sum(case when flag = "b" then gift_wrap_gms end),0) as gift_wrap_gms_dly
+	, coalesce(sum(case when flag = "b" then gift_card_purchase_value end),0) as gift_card_purchase_value_dly
+	, coalesce(sum(case when flag = "b" then gift_recipient_view_gms end),0) as gift_recipient_view_gms_dly
+	, coalesce(sum(case when flag = "b" then all_orders end),0) as all_orders_dly
+	, coalesce(sum(case when flag = "b" then all_gift_orders end),0) as all_gift_orders_dly
+	, coalesce(sum(case when flag = "b" then marked_as_gift_orders end),0) as marked_as_gift_orders_dly
+	, coalesce(sum(case when flag = "b" then gift_search_orders end),0) as gift_search_orders_dly
+	, coalesce(sum(case when flag = "b" then gift_title_orders end),0) as gift_title_orders_dly
+	, coalesce(sum(case when flag = "b" then gift_message_orders end),0) as gift_message_orders_dly 
+	, coalesce(sum(case when flag = "b" then gift_wrap_orders end),0) as gift_wrap_orders_dly
+	, coalesce(sum(case when flag = "b" then gift_recipient_view_orders end),0) as gift_recipient_view_orders_dly
+	, coalesce(sum(case when flag = "b" then all_transactions end),0) as all_transactions_dly 
+	, coalesce(sum(case when flag = "b" then gift_card_orders end),0) as gift_card_orders_dly
+	, coalesce(sum(case when flag = "b" then all_gift_transactions end),0) as all_gift_transactions_dly
+	, coalesce(sum(case when flag = "b" then marked_as_gift_transactions end),0) as marked_as_gift_transactions_dly
+	, coalesce(sum(case when flag = "b" then gift_search_transactions end),0) as gift_search_transactions_dly
+	, coalesce(sum(case when flag = "b" then gift_title_transactions end),0) as gift_title_transactions_dly
+	, coalesce(sum(case when flag = "b" then gift_message_transactions end),0) as gift_message_transactions_dly
+	, coalesce(sum(case when flag = "b" then gift_wrap_transactions end),0) as gift_wrap_transactions_dly
+	--YY Metrics 
+	, coalesce(sum(case when flag = "c" then total_gms end),0) as total_gms_yy
+	, coalesce(sum(case when flag = "c" then total_gift_gms end),0) as total_gift_gms_yy
+	, coalesce(sum(case when flag = "c" then marked_as_gift_gms end),0) as marked_as_gift_gms_yy
+	, coalesce(sum(case when flag = "c" then gift_search_gms end),0) as gift_search_gms_yy 
+	, coalesce(sum(case when flag = "c" then gift_title_gms end),0) as gift_title_gms_yy
+	, coalesce(sum(case when flag = "c" then gift_wrap_gms end),0) as gift_wrap_gms_yy
+	, coalesce(sum(case when flag = "c" then gift_card_purchase_value end),0) as gift_card_purchase_value_dyy
+	, coalesce(sum(case when flag = "c" then gift_recipient_view_gms end),0) as gift_recipient_view_gms_dyy
+	, coalesce(sum(case when flag = "c" then all_orders end),0) as all_orders_yy
+	, coalesce(sum(case when flag = "c" then all_gift_orders end),0) as all_gift_orders_yy
+	, coalesce(sum(case when flag = "c" then marked_as_gift_orders end),0) as marked_as_gift_orders_yy
+	, coalesce(sum(case when flag = "c" then gift_search_orders end),0) as gift_search_orders_yy
+	, coalesce(sum(case when flag = "c" then gift_title_orders end),0) as gift_title_orders_yy
+	, coalesce(sum(case when flag = "c" then gift_message_orders end),0) as gift_message_orders_yy
+	, coalesce(sum(case when flag = "c" then gift_wrap_orders end),0) as gift_wrap_orders_yy
+	, coalesce(sum(case when flag = "c" then gift_card_orders end),0) as gift_card_orders_yy
+	, coalesce(sum(case when flag = "c" then gift_recipient_view_orders end),0) as gift_recipient_view_orders_yy
+	, coalesce(sum(case when flag = "c" then all_transactions end),0) as all_transactions_yy
+	, coalesce(sum(case when flag = "c" then all_gift_transactions end),0) as all_gift_transactions_yy
+	, coalesce(sum(case when flag = "c" then marked_as_gift_transactions end),0) as marked_as_gift_transactions_yy
+	, coalesce(sum(case when flag = "c" then gift_search_transactions end),0) as gift_search_transactions_yy
+	, coalesce(sum(case when flag = "c" then gift_title_transactions end),0) as gift_title_transactions_yy
+	, coalesce(sum(case when flag = "c" then gift_message_transactions end),0) as gift_message_transactions_yy
+	, coalesce(sum(case when flag = "c" then gift_wrap_transactions end),0) as gift_wrap_transactions_yy
+from 
+	tmp 
+group by 1,2,3,4,5,6,7,8,9
+)
+;
+
+END
+
+--get table to get yoy for what i need from 2024 
+select 
+  date_trunc(date, year) as year
+  -- yy metrics 
+	, sum(total_gms) as total_gms
+	, sum(total_gift_gms) as total_gift_gms
+	, sum(marked_as_gift_gms) as marked_as_gift_gms  
+	, sum(gift_search_gms) as gift_search_gms   
+	, sum(gift_title_gms) as gift_title_gms  
+	, sum(all_orders) as all_orders   
+	, sum(all_gift_orders) as all_gift_orders  
+	, sum(marked_as_gift_orders) as marked_as_gift_orders  
+	, sum(gift_search_orders) as gift_search_orders 
+	, sum(gift_title_orders) as gift_title_orders  
+	, sum(all_transactions) as all_transactions   
+	, sum(all_gift_transactions) as all_gift_transactions 
+	, sum(marked_as_gift_transactions) as marked_as_gift_transactions  
+	, sum(gift_search_transactions) as gift_search_transactions  
+	, sum(gift_title_transactions) as gift_title_transactions 
+  --dly metrics 
+  , sum(total_gms_dly) as total_gms_dly
+	, sum(total_gift_gms_dly) as total_gift_gms_dly
+  , sum(marked_as_gift_gms_dly) as marked_as_gift_gms_dly
+  , sum(gift_search_gms_dly)  as gift_search_gms_dly 
+  , sum(gift_title_gms_dly) as gift_title_gms_dly
+  , sum(all_orders_dly) as all_orders_dly
+  , sum(all_gift_orders_dly) as all_gift_orders_dly
+  , sum(marked_as_gift_orders_dly) as marked_as_gift_orders_dly
+  , sum(gift_search_orders_dly) as gift_search_orders_dly
+  , sum(gift_title_orders_dly) as gift_title_orders_dly
+  , sum(all_transactions_dly) as all_transactions_dly
+  , sum(all_gift_transactions_dly) as all_gift_transactions_dly
+  , sum(marked_as_gift_transactions_dly) as marked_as_gift_transactions_dly
+  , sum(gift_search_transactions_dly) as gift_search_transactions_dly
+  , sum(gift_title_transactions_dly) as gift_title_transactions_dly
+from 
+   `etsy-data-warehouse-dev.madelinecollins.gift_gms_metrics`
+  where date >= '2020-01-01'
+  group by 1 
