@@ -1,8 +1,7 @@
---rerun rollup to go back to 2019
+------------------------------------------------------------------------
+RERUN GIFT GMS ROLLUP TO GET DATA BACK TO 2020
+------------------------------------------------------------------------
 BEGIN 
-
--- create table of base GMS + gift GMS classifiers according to our definition of gift GMS
-
 create or replace temporary table purchases as (
 select
 	date(r.creation_tsz) as date 
@@ -408,10 +407,10 @@ from
 group by 1,2,3,4,5,6,7,8,9
 )
 ;
-
 END
-
---get table to get yoy for what i need from 2024 
+------------------------------------------------------------------------
+GET YoY DATA FROM GIFT GMS ROLLUP 
+------------------------------------------------------------------------
 select 
   date_trunc(date, year) as year
   -- yoy
@@ -436,8 +435,10 @@ from
   group by 1 
 
 
----yoy gms metrics: gift title purchases 
---get all visits + year that made transaction with 'gift' in listing title since 2020
+------------------------------------------------------------------------
+YoY METRICS FOR GIFT TITLE 
+--visits, acvv, conversion rate
+------------------------------------------------------------------------
  create or replace table  etsy-data-warehouse-dev.madelinecollins.gift_title_transaction_visits as (
  select
   extract(year from b.date) as year
@@ -461,15 +462,13 @@ from
 --2023/ 2024 YOY CHANGE  
 with yearly_metrics as (
 select
-  extract(year from v._date) as year
+    extract(year from v._date) as year
   , count(distinct v.visit_id) as total_visits
   , count(distinct gtv.visit_id) as gift_title_visits 
-  , avg(v.total_gms) as total_acvv
-  , avg(case when gtv.visit_id is not null then v.total_gms end) as gift_title_acvv
-  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct visit_id) as total_conversion_rate
+  , sum(v.total_gms)/count(distinct case when v.converted=1 then v.visit_id end) as total_acvv
+  , sum(case when gtv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then gtv.visit_id end) as gift_title_acvv
+  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct case when v.converted=1visit_id) as total_conversion_rate
   , count(distinct case when gtv.visit_id is not null and v.converted=1 then v.visit_id end)/ count(distinct visit_id) as gift_title_conversion_rate
-  , sum(v.converted)/ count(distinct visit_id) as total_conversion_rate_2
-  , sum(case when gtv.visit_id is not null then v.converted end)/ count(distinct visit_id) as gift_title_conversion_rate_2
 from 
   etsy-data-warehouse-prod.weblog.visits v
 left join 
@@ -507,12 +506,12 @@ ORDER BY
 ---EVERY OTHER YOY CHANGE 
 , yearly_metrics as (
 select
-  extract(year from v._date) as year
+   extract(year from v._date) as year
   , count(distinct v.visit_id) as total_visits
   , count(distinct gtv.visit_id) as gift_title_visits 
-  , avg(v.total_gms) as total_acvv
-  , avg(case when gtv.visit_id is not null then v.total_gms end) as gift_title_acvv
-  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct visit_id) as total_conversion_rate
+  , sum(v.total_gms)/count(distinct case when v.converted=1 then v.visit_id end) as total_acvv
+  , sum(case when gtv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then gtv.visit_id end) as gift_title_acvv
+  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct v.visit_id) as total_conversion_rate
   , count(distinct case when gtv.visit_id is not null and v.converted=1 then v.visit_id end)/ count(distinct visit_id) as gift_title_conversion_rate
 from 
   etsy-data-warehouse-prod.weblog.visits v
