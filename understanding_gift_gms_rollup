@@ -465,8 +465,8 @@ select
   , count(distinct gtv.visit_id) as gift_title_visits 
   , avg(v.total_gms) as total_acvv
   , avg(case when gtv.visit_id is not null then v.total_gms end) as gift_title_acvv
-  , avg(v.converted) as total_conversion_rate
-  , avg(case when gtv.visit_id is not null then v.converted end) as gift_title_conversion_rate
+  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct visit_id) as total_conversion_rate
+  , count(distinct case when gtv.visit_id is not null and v.converted=1 then v.visit_id end)/ count(distinct visit_id) as gift_title_conversion_rate
 from 
   etsy-data-warehouse-prod.weblog.visits v
 left join 
@@ -493,6 +493,6 @@ JOIN
   yearly_metrics b
 ON
   a.year = b.year + 1
-group by 1,2,3,4,5,6,7 
+group by 1,2,3,4,5,6,7,8,9
 ORDER BY
   a.year;
