@@ -518,6 +518,8 @@ left join
     on v.visit_id=views.visit_id
 where 
   v._date >= '2020-01-01'
+  --v._date between '2023-01-01' and '2023-04-09'
+  --or v._date between '2024-01-01' and '2024-04-09'
 group by 1
 )
 SELECT
