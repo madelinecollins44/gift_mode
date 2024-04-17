@@ -1106,18 +1106,18 @@ with yearly_metrics as (
 select
   extract(year from v._date) as year
   , count(distinct v.visit_id) as total_visits
-  , count(distinct intent.visit_id) as gift_intent_visits 
-  , count(distinct case when is_gift=1 then tiag.visit_id) as tiag_visits 
+  -- , count(distinct intent.visit_id) as gift_intent_visits 
+  , count(distinct case when is_gift=1 then tiag.visit_id end) as tiag_visits 
   , sum(case when tiag.visit_id is not null and tiag.is_gift=1 then v.total_gms end)/count(distinct case when tiag.is_gift=1 then tiag.visit_id end) as tiag_acvv
   , sum(case when tiag.visit_id is not null and tiag.is_gift=1 then tiag.trans_gms_net end)/count(distinct case when tiag.is_gift=1 then tiag.visit_id end) as tiag_acvv_trans
- , count(distinct case when tiag.is_gift=1 then tiag.visit_id end)/ count(distinct intent.visit_id end) as tiag_conversion_rate
+--  , count(distinct case when tiag.is_gift=1 then tiag.visit_id end)/ count(distinct intent.visit_id end) as tiag_conversion_rate
 from 
-  etsy-data-warehouse-prod.weblog.visits visits
+  etsy-data-warehouse-prod.weblog.visits v
 left join 
-  --GIFT INTENT VISITS intent
-left join 
+--   --GIFT INTENT VISITS intent
+-- left join 
   etsy-data-warehouse-dev.madelinecollins.tiag_order_visits tiag
-    on a.visit_id=c.visit_id
+    on v.visit_id=tiag.visit_id
 where 
   v._date >= '2020-01-01'
   --v._date between '2023-01-01' and '2023-04-09'
@@ -1132,12 +1132,12 @@ SELECT
   , b.tiag_acvv AS previous_year_tiag_acvv
   , a.tiag_acvv_trans AS current_year_tiag_acvv_trans
   , b.tiag_acvv_trans AS previous_year_tiag_acvv_trans
-  , a.tiag_conversion_rate AS current_year_tiag_conversion_rate
-  , b.tiag_conversion_rate AS previous_year_tiag_conversion_rate
+  -- , a.tiag_conversion_rate AS current_year_tiag_conversion_rate
+  -- , b.tiag_conversion_rate AS previous_year_tiag_conversion_rate
   , ((a.tiag_visits - b.tiag_visits) / b.tiag_visits) * 100 AS yoy_growth_tiag_visits  
   , ((a.tiag_acvv - b.tiag_acvv) / b.tiag_acvv) * 100 AS yoy_growth_tiag_acvv
   , ((a.tiag_acvv_trans - b.tiag_acvv_trans) / b.tiag_acvv_trans) * 100 AS yoy_growth_tiag_acvv_trans
-  , ((a.tiag_conversion_rate - b.tiag_conversion_rate) / b.tiag_conversion_rate) * 100 AS yoy_growth_tiag_conversion_rate
+  -- , ((a.tiag_conversion_rate - b.tiag_conversion_rate) / b.tiag_conversion_rate) * 100 AS yoy_growth_tiag_conversion_rate
 FROM
   yearly_metrics a
 JOIN
