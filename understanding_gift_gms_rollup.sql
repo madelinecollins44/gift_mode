@@ -617,32 +617,32 @@ with yearly_metrics as (
 select
   extract(year from v._date) as year
   , count(distinct qv.visit_id) as total_visits_w_queries
-  , count(distinct case when qv.gift_query=1 then qv.visit_id end) as total_visits_w_gift_queries
-  , sum(case when qv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then qv.visit_id end) as total_acvv_query
+  -- , count(distinct case when qv.gift_query=1 then qv.visit_id end) as total_visits_w_gift_queries
+  , count(distinct case when qv.gift_query=1 and v.converted =1 then qv.visit_id end) as total_visits_w_gift_queries_convert
+  -- , sum(case when qv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then qv.visit_id end) as total_acvv_query
   , sum(case when qv.visit_id is not null and qv.gift_query =1 then v.total_gms end)/count(distinct case when v.converted=1 and qv.gift_query=1 then qv.visit_id end) as total_acvv_gift_query
-  , count(distinct case when v.converted =1 then qv.visit_id end)/ count(distinct qv.visit_id) as total_conversion_rate_query
+  -- , count(distinct case when v.converted =1 then qv.visit_id end)/ count(distinct qv.visit_id) as total_conversion_rate_query
   , count(distinct case when v.converted =1 and qv.gift_query =1 then qv.visit_id end)/ count(distinct case when qv.gift_query=1 then qv.visit_id end) as total_conversion_rate_gift_query
-
 from 
   etsy-data-warehouse-prod.weblog.visits v
 left join 
   etsy-data-warehouse-dev.madelinecollins.gift_query_visits qv
     using (visit_id)
 where 
-  -- v._date >= '2020-01-01'
-  v._date between '2023-01-01' and '2023-04-09'
-  or v._date between '2024-01-01' and '2024-04-09'
+  v._date >= '2020-01-01'
+  -- v._date between '2023-01-01' and '2023-04-09'
+  -- or v._date between '2024-01-01' and '2024-04-09'
 group by 1
 )
 SELECT
   a.year AS current_year
-  , a.total_visits_w_gift_queries AS current_year_visits
-  , b.total_visits_w_gift_queries AS previous_year_visits
+  , a.total_visits_w_gift_queries_convert AS current_year_visits
+  , b.total_visits_w_gift_queries_convert AS previous_year_visits
   , a.total_acvv_gift_query AS current_year_acvv
   , b.total_acvv_gift_query AS previous_year_acvv
   , a.total_conversion_rate_gift_query AS current_year_conversion_rate
   , b.total_conversion_rate_gift_query AS previous_year_conversion_rate
-  , ((a.total_visits_w_gift_queries - b.total_visits_w_gift_queries) / b.total_visits_w_gift_queries) * 100 AS yoy_growth_visits  
+  , ((a.total_visits_w_gift_queries_convert - b.total_visits_w_gift_queries_convert) / b.total_visits_w_gift_queries_convert) * 100 AS yoy_growth_visits  
   , ((a.total_acvv_gift_query - b.total_acvv_gift_query) / b.total_acvv_gift_query) * 100 AS yoy_growth_acvv
   , ((a.total_conversion_rate_gift_query - b.total_conversion_rate_gift_query) / b.total_conversion_rate_gift_query) * 100 AS yoy_growth_conversion_rate
 FROM
@@ -654,4 +654,3 @@ ON
 group by 1,2,3,4,5,6,7,8,9
 ORDER BY
   a.year;
-
