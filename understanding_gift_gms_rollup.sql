@@ -696,12 +696,11 @@ ORDER BY
 ------------------------------------------------------------------------
 VOLUME OF TOP 50 GIFT QUERIES YOY
 ------------------------------------------------------------------------
-create or replace table etsy-data-warehouse-dev.madelinecollins.top_50_gift_queries as (
-with all_queries as (
+create or replace table etsy-data-warehouse-dev.madelinecollins.gift_queries as (
 SELECT
   extract(year from _date) as year
+  , _date
   , query
-  , rank() over (order by count(distinct visit_id) desc) as query_rank
   , count(distinct visit_id) as visits
 FROM 
   `etsy-data-warehouse-prod.search.query_sessions_new` qs
@@ -710,12 +709,240 @@ JOIN
     USING (query)
 WHERE 
   _date >= '2020-01-01'
+  --   (_date between '2023-01-01' and '2023-04-09'
+  -- or _date between '2024-01-01' and '2024-04-09')
   and is_gift > 0
+group by 1,2,3);
+
+
+--yoy metrics
+with agg_queries as (
+select 
+  year
+  , query
+  , sum(visits) as total_visits
+  , row_number () over (partition by year order by sum(visits) desc) as rank
+  from etsy-data-warehouse-dev.madelinecollins.gift_queries
+--   (_date between '2023-01-01' and '2023-04-09'
+--  or _date between '2024-01-01' and '2024-04-09')
 group by 1,2
 )
-select * 
+, yearly_metrics as ( -- total visits of the top 50 queries for each year 
+select
+  year
+  , sum(total_visits) as total_visits
 from 
-  all_queries 
+  agg_queries
+where rank <= 50
+group by 1
+)
+SELECT
+  a.year AS current_year
+  , a.total_visits AS current_year_visits
+  , b.total_visits AS previous_year_visits
+  , ((a.total_visits - b.total_visits) / b.total_visits) * 100 AS yoy_growth_visits  
+
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+group by 1,2,3,4
+ORDER BY
+  a.year;
+
+------------------------------------------------------------------------
+CREATE GIFT INTENT VISITS TABLE FOR DENOMINATOR OF TIAG CONVERSION RATE
+------------------------------------------------------------------------
+BEGIN
+create or replace temporary table visits as (
+with visits as (
+select
+	b._date,
+	b.visit_id,
+	b.landing_event,
+	b.landing_event_url,
+	v.utm_campaign,
+	v.utm_medium,
+	case when b.landing_event = "market" then lower(regexp_replace(regexp_replace(regexp_substr(b.landing_event_url, "market/([^?]*)"), "_", " "), "\\%27", "")) else null end as landing_market_query,
+	case when b.landing_event like "view%listing%" then safe_cast(regexp_substr(b.landing_event_url, "listing\\/(\\d*)") as int64) else null end as landing_listing_id,
+	case when b.landing_event = "search" then regexp_replace(regexp_replace(regexp_substr(lower(b.landing_event_url), "q=([a-z0-9%+]+)"),"\\\\+"," "),"%20"," ") else null end as landing_search_query,
+	case when b.landing_event = "finds_page" then lower(regexp_substr(b.landing_event_url, "featured\\/([^\\/\\?]+)")) else null end as landing_gg_slug
+from
+	`etsy-data-warehouse-prod.weblog.recent_visits` b
+left join 
+	-- data around channels (top_channel, utm_campaign, etc.) should be taken from buyatt_mart which is canonical marketing source
+	`etsy-data-warehouse-prod.buyatt_mart.visits` v
+using(visit_id)
 where 
-  query_rank <= 50 
-); 
+	b._date > '2020-01-01'
+	and b.platform in ("boe","desktop","mobile_web") --remove soe
+	and b.is_admin_visit != 1 --remove admin
+	and (b.user_id is null or b.user_id not in (
+		select user_id from `etsy-data-warehouse-prod.rollups.seller_basics` where active_seller_status = 1)
+		) --remove sellers
+), first_action as (
+select
+	v.visit_id,
+	e.sequence_number,
+	e.event_type,
+	e.listing_id,
+	lower(regexp_substr(e.url,"\\/c\\/+([^?]*)")) as category_page,
+	lower(regexp_replace(regexp_replace(regexp_substr(lower(url), "q=([a-z0-9%+]+)"),"\\+"," "),"%20"," ")) as search_query,
+	lower(regexp_replace(regexp_replace(regexp_substr(landing_event_url, "market/([^?]*)"), "_", " "), "\\%27", "")) as market_query,
+	lower(regexp_substr(url, "featured\\/([^\\/\\?]+)")) as gift_guide_slug,
+	case when event_type in ("category_page", "category_page_hub") then regexp_replace(split(regexp_substr(url, "\\/c\\/([^\\?|\\&]+)"),"/")[safe_offset(0)],"-","_") end as cat_page_top_cat,
+	case when event_type in ("category_page", "category_page_hub") then regexp_replace(split(regexp_substr(url, "\\/c\\/([^\\?|\\&]+)"),"/")[safe_offset(1)],"-","_") end as cat_page_second_cat
+from 
+	visits v
+join 
+	`etsy-data-warehouse-prod.weblog.events` e 
+using (visit_id)
+where (
+	e.event_type like "view%listing%" --includes unavailable or sold listing view
+	or e.event_type like "gift_mode%"
+	or e.event_type in ("search","category_page","category_page_hub","market", "shop_home", "finds_page", 
+		"giftreceipt_view","gift_recipientview_boe_view","gift_receipt")
+
+	)
+and e.page_view = 1
+and e._date > '2020-01-01'
+qualify row_number() over(partition by v.visit_id order by e.sequence_number) = 1  --first action event only
+)
+select 
+	v.*,
+	fa.event_type as first_action_type,
+	fa.listing_id as first_action_listing_id,
+	fa.category_page as first_action_category_page,
+	fa.search_query as first_action_search_query,
+	fa.market_query as first_action_market_query,
+	fa.gift_guide_slug as first_action_gg_slug,
+	fa.cat_page_top_cat,
+	fa.cat_page_second_cat,
+	coalesce(safe_cast(v.landing_listing_id as int64),safe_cast(fa.listing_id as int64)) as listing_id_clean,
+	lower(coalesce(v.landing_market_query,v.landing_search_query, fa.market_query, fa.search_query)) as query_clean,
+	lower(coalesce(v.landing_gg_slug, fa.gift_guide_slug)) as gg_slug_clean
+from 
+	visits v
+left join 
+	first_action fa 
+on 
+	v.visit_id = fa.visit_id 
+);
+
+
+--get information about query taxonomy
+
+create or replace temporary table query_sessions_temp as (
+with queries as (
+select
+	q.query_raw,
+	c.taxonomy_id,
+	c.full_path as query_full_path,
+	split(c.full_path, ".")[safe_offset(0)] as query_top_cat,
+	split(c.full_path, ".")[safe_offset(1)] as query_second_cat,  
+	case when (regexp_contains(q.query_raw, "(\?i)\\bgift|\\bfor (\\bhim|\\bher|\\bmom|\\bdad|\\bmother|\\bfather|\\bdaughter|\\bson|\\bwife|\\bhusband|\\bpartner|\\baunt|\\buncle|\\bniece|\\bnephew|\\bfiance|\\bcousin|\\bin law|\\bboyfriend|\\bgirlfriend|\\bgrand|\\bfriend|\\bbest friend)")
+		or regexp_contains(q.query_raw, "(\?i)\\boccasion|\\banniversary|\\bbirthday|\\bmothers day|\\bfathers day|\\bchristmas present")) then 1
+	else 0 end as gift_query,
+	row_number() over (partition by query_raw order by count(*) desc) as rn,
+	count(*) as session_count,
+from
+	`etsy-data-warehouse-prod.search.query_sessions_new` q
+join 
+	`etsy-data-warehouse-prod.structured_data.taxonomy_latest` c on q.classified_taxonomy_id = c.taxonomy_id
+where 
+	q._date >= '2020-01-01'
+and q.query_raw in (
+	select distinct query_clean from visits
+	)
+group by 
+	1,2,3,4,5
+)
+select 
+	* 
+from 
+	queries 
+where rn = 1	-- most common categorization for a given query
+);
+
+--get listing taxonomy information 
+
+create or replace temporary table listing_attributes_temp as (
+select 
+	distinct l.listing_id,
+	l.taxonomy_id,
+	c.full_path as listing_full_path,
+	split(c.full_path, ".")[safe_offset(0)] as listing_top_cat,
+	split(c.full_path, ".")[safe_offset(1)] as listing_second_cat,
+	ls.title,
+	case when regexp_contains(ls.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト|\\bfor (\\bhim|\\bher|\\bmom|\\bdad|\\bmother|\\bfather|\\bdaughter|\\bson|\\bwife|\\bhusband|\\bpartner|\\baunt|\\buncle|\\bniece|\\bnephew|\\bfiance|\\bcousin|\\bin law|\\bboyfriend|\\bgirlfriend|\\bgrand|\\bfriend|\\bbest friend)") then 1 else 0 end as gift_title
+from `etsy-data-warehouse-prod.listing_mart.listing_attributes` l
+join `etsy-data-warehouse-prod.structured_data.taxonomy_latest` c using (taxonomy_id)
+left join `etsy-data-warehouse-prod`.listing_mart.listing_titles ls on l.listing_id = ls.listing_id
+where l.listing_id in (
+	select listing_id_clean from visits
+	) 
+);
+
+-- pull everything together 
+
+create or replace temporary table category_visits_full as (
+select
+	b._date,
+	b.visit_id,
+	b.landing_event,
+	b.landing_event_url,
+	b.first_action_type,
+	b.utm_campaign,
+	b.first_action_listing_id,
+	b.first_action_category_page,
+	b.first_action_gg_slug,
+	b.listing_id_clean,
+	b.query_clean,
+	b.gg_slug_clean,
+	l.listing_top_cat,
+	l.listing_second_cat,
+	l.gift_title,
+	q.query_full_path,
+	q.query_top_cat,
+	q.query_second_cat,
+	q.gift_query,
+	b.cat_page_top_cat,
+	b.cat_page_second_cat,
+	coalesce(l.listing_top_cat, q.query_top_cat, b.cat_page_top_cat) as top_category,
+	coalesce(l.listing_second_cat, q.query_second_cat, b.cat_page_second_cat) as subcategory
+from 
+	visits b
+left join  
+	listing_attributes_temp l on listing_id_clean = l.listing_id 
+left join 
+	query_sessions_temp q on query_clean = lower(q.query_raw)
+);
+
+create or replace table etsy-data-warehouse-dev.madelinecollins.gift_intent_visits as (
+select
+	visit_id
+	, case 
+    when (landing_event like "gift_mode%" or landing_event in ("gift_recipientview_boe_view","giftreceipt_view","gift_receipt")) then 1
+    when (first_action_type like "gift_mode%" or landing_event in ("gift_recipientview_boe_view","giftreceipt_view","gift_receipt")) then 1
+    when utm_campaign like "%gift%" then 1
+    when first_action_category_page like "%gift%" then 1
+    when gift_query > 0 then 1
+    when gg_slug_clean like "%gift%" then 1
+    when gift_title > 0 then 1
+	  else 0 
+  end as gift_visit
+from category_visits_full
+where 
+   (case 
+    when (landing_event like "gift_mode%" or landing_event in ("gift_recipientview_boe_view","giftreceipt_view","gift_receipt")) then 1
+    when (first_action_type like "gift_mode%" or landing_event in ("gift_recipientview_boe_view","giftreceipt_view","gift_receipt")) then 1
+    when utm_campaign like "%gift%" then 1
+    when first_action_category_page like "%gift%" then 1
+    when gift_query > 0 then 1
+    when gg_slug_clean like "%gift%" then 1
+    when gift_title > 0 then 1
+	  else 0 end)=1 
+);
+end
