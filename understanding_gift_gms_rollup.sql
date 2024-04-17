@@ -781,32 +781,60 @@ where
 ------------------------------------------------------------------------
 CREATE GIFT INTENT VISITS TABLE FOR DENOMINATOR OF TIAG CONVERSION RATE
 ------------------------------------------------------------------------
-BEGIN
+--create tables for each year to speed up 
+	create or replace table etsy-data-warehouse-dev.madelinecollins.visits_since_jan1_2022 as (
+select
+	b.visit_id
+  , b._date
+  , b.user_id
+  , b.landing_event
+  , b.landing_event_url
+  ,	case when b.landing_event = "market" then lower(regexp_replace(regexp_replace(regexp_substr(b.landing_event_url, "market/([^?]*)"), "_", " "), "\\%27", "")) else null end as landing_market_query,
+	case when b.landing_event like "view%listing%" then safe_cast(regexp_substr(b.landing_event_url, "listing\\/(\\d*)") as int64) else null end as landing_listing_id,
+	case when b.landing_event = "search" then regexp_replace(regexp_replace(regexp_substr(lower(b.landing_event_url), "q=([a-z0-9%+]+)"),"\\\\+"," "),"%20"," ") else null end as landing_search_query,
+	case when b.landing_event = "finds_page" then lower(regexp_substr(b.landing_event_url, "featured\\/([^\\/\\?]+)")) else null end as landing_gg_slug
+from `etsy-data-warehouse-prod.weblog.visits` b
+where 
+  extract(year from b._date) = 2022
+	and b.platform in ("boe","desktop","mobile_web") --remove soe
+	and b.is_admin_visit != 1 --remove admin
+); 
+--------------------------------
+begin
 
 create or replace temporary table visits as (
-with visits as (
+with unions as (
+select 
+* 
+from etsy-data-warehouse-dev.madelinecollins.visits_since_jan1_2024
+union all
+select 
+* 
+from etsy-data-warehouse-dev.madelinecollins.visits_since_jan1_2023
+union all
+select 
+* 
+from etsy-data-warehouse-dev.madelinecollins.visits_since_jan1_2022
+)
+, visits as (
 select
 	b._date,
 	b.visit_id,
-	b.landing_event,
+	b.user_id,
 	b.landing_event_url,
 	v.utm_campaign,
-	v.utm_medium,
 	case when b.landing_event = "market" then lower(regexp_replace(regexp_replace(regexp_substr(b.landing_event_url, "market/([^?]*)"), "_", " "), "\\%27", "")) else null end as landing_market_query,
 	case when b.landing_event like "view%listing%" then safe_cast(regexp_substr(b.landing_event_url, "listing\\/(\\d*)") as int64) else null end as landing_listing_id,
 	case when b.landing_event = "search" then regexp_replace(regexp_replace(regexp_substr(lower(b.landing_event_url), "q=([a-z0-9%+]+)"),"\\\\+"," "),"%20"," ") else null end as landing_search_query,
 	case when b.landing_event = "finds_page" then lower(regexp_substr(b.landing_event_url, "featured\\/([^\\/\\?]+)")) else null end as landing_gg_slug
 from
-	`etsy-data-warehouse-prod.weblog.visits` b
+	unions b
 left join 
 	-- data around channels (top_channel, utm_campaign, etc.) should be taken from buyatt_mart which is canonical marketing source
 	`etsy-data-warehouse-prod.buyatt_mart.visits` v
 using(visit_id)
 where 
-	b._date >= '2020-01-01'
-	and b.platform in ("boe","desktop","mobile_web") --remove soe
-	and b.is_admin_visit != 1 --remove admin
-	and (b.user_id is null or b.user_id not in (
+	(b.user_id is null or b.user_id not in (
 		select user_id from `etsy-data-warehouse-prod.rollups.seller_basics` where active_seller_status = 1)
 		) --remove sellers
 ), first_action as (
@@ -833,7 +861,7 @@ where (
 		"giftreceipt_view","gift_recipientview_boe_view","gift_receipt")
 	)
 and e.page_view = 1
-and e._date > '2020-01-01' -- event table only goes back 30 days 
+and e._date > '2022-01-01'
 qualify row_number() over(partition by v.visit_id order by e.sequence_number) = 1  --first action event only
 )
 select 
@@ -878,7 +906,7 @@ from
 join 
 	`etsy-data-warehouse-prod.structured_data.taxonomy_latest` c on q.classified_taxonomy_id = c.taxonomy_id
 where 
-	q._date >= '2020-01-01'
+	q._date >= '2022-01-01' -- get a full year of classifications to get maximal coverage
 and q.query_raw in (
 	select distinct query_clean from visits
 	)
@@ -911,19 +939,80 @@ where l.listing_id in (
 	) 
 );
 
+
+-- get information about gift GMS 
+
+create or replace temporary table purchases as (
+with all_purch as (
+select
+	a.date 
+	, tv.visit_id
+	, r.receipt_id
+	, a.transaction_id 
+	, a.listing_id
+	, t.trans_gms_net 
+	, a.is_gift 
+from 
+	`etsy-data-warehouse-prod`.transaction_mart.all_receipts r 
+join
+	`etsy-data-warehouse-prod`.transaction_mart.all_transactions a 
+using(receipt_id)
+left join 
+	`etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans t 
+using(transaction_id)
+inner join 
+	`etsy-data-warehouse-prod`.transaction_mart.transactions_visits tv 
+on 
+	a.transaction_id = tv.transaction_id
+where 
+	a.date > '2022-01-01'
+), gtt as (
+select 
+	a.* 
+	, max(case when regexp_contains(l.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end) as gift_title
+from 
+	all_purch a 
+left join 
+	`etsy-data-warehouse-prod`.listing_mart.listing_titles l 
+using(listing_id) 
+group by 1,2,3,4,5,6,7
+), searches as (
+SELECT
+	distinct _date, visit_id
+FROM `etsy-data-warehouse-prod.search.query_sessions_new` qs
+JOIN `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+WHERE _date > '2022-01-01'
+and is_gift > 0
+)
+select 
+	a.date 
+	, a.visit_id 
+	, sum(trans_gms_net) as total_gms 
+	, sum(case when is_gift > 0 or gift_title > 0 or b.visit_id is not null then trans_gms_net end) as gift_gms
+	, count(distinct receipt_id) as total_orders
+	, count(distinct case when is_gift > 0 or gift_title > 0 or b.visit_id is not null then receipt_id end) as gift_orders
+from 
+	gtt a 
+left join 
+	searches b 
+on 
+	a.visit_id = b.visit_id
+group by 1,2
+)
+;
+
 -- pull everything together 
 
 create or replace temporary table category_visits_full as (
 select
 	b._date,
 	b.visit_id,
+	b.user_id,
 	b.landing_event,
 	b.landing_event_url,
-	b.first_action_type,
 	b.utm_campaign,
-	b.first_action_listing_id,
+	b.first_action_type,
 	b.first_action_category_page,
-	b.first_action_gg_slug,
 	b.listing_id_clean,
 	b.query_clean,
 	b.gg_slug_clean,
@@ -934,34 +1023,46 @@ select
 	q.query_top_cat,
 	q.query_second_cat,
 	q.gift_query,
-	b.cat_page_top_cat,
-	b.cat_page_second_cat,
-	coalesce(l.listing_top_cat, q.query_top_cat, b.cat_page_top_cat) as top_category,
-	coalesce(l.listing_second_cat, q.query_second_cat, b.cat_page_second_cat) as subcategory
 from 
 	visits b
 left join  
 	listing_attributes_temp l on listing_id_clean = l.listing_id 
 left join 
 	query_sessions_temp q on query_clean = lower(q.query_raw)
+left join 
+	purchases p 
+on 
+	b.visit_id = p.visit_id
 );
 
-create or replace table etsy-data-warehouse-dev.madelinecollins.gift_intent_visits as (
+-- classify visits and save intermediary table 
+
+create or replace temporary table classified_visits as (
 select
-	visit_id
+	v.*
+	,case when (landing_event like "gift_mode%" or landing_event in ("gift_recipientview_boe_view","giftreceipt_view","gift_receipt")) then 1
+	when (first_action_type like "gift_mode%" or landing_event in ("gift_recipientview_boe_view","giftreceipt_view","gift_receipt")) then 1
+	when utm_campaign like "%gift%" then 1
+	when first_action_category_page like "%gift%" then 1
+	when gift_query > 0 then 1
+	when gg_slug_clean like "%gift%" then 1
+	when gift_title > 0 then 1
+	else 0 end as gift_visit
 from 
-	category_visits_full
+	category_visits_full v
+)
+;
+
+create or replace table `etsy-data-warehouse-dev.madelinecollins.gift_intent_visits_all` as (
+select 
+	_date
+	, visit_id 
+from 
+	classified_visits 
 where 
-   (case 
-    when (landing_event like "gift_mode%" or landing_event in ("gift_recipientview_boe_view","giftreceipt_view","gift_receipt")) then 1
-    when (first_action_type like "gift_mode%" or landing_event in ("gift_recipientview_boe_view","giftreceipt_view","gift_receipt")) then 1
-    when utm_campaign like "%gift%" then 1
-    when first_action_category_page like "%gift%" then 1
-    when gift_query > 0 then 1
-    when gg_slug_clean like "%gift%" then 1
-    when gift_title > 0 then 1
-	  else 0 end)=1 
-);
+	gift_visit > 0
+)
+;
 end
 ------------------------------------------------------------------------
 YOY FOR TIAG ORDERS
@@ -969,12 +1070,80 @@ YOY FOR TIAG ORDERS
  create or replace table  etsy-data-warehouse-dev.madelinecollins.tiag_order_visits as (
 select 
   a.is_gift
-, b.visit_id
+  , a.date
+  , b.visit_id
+  , c.trans_gms_net
 from 
   etsy-data-warehouse-prod.transaction_mart.all_transactions a
 inner join 
   etsy-data-warehouse-prod.transaction_mart.transactions_visits b
   using (transaction_id)
+left join 
+  etsy-data-warehouse-prod.transaction_mart.transactions_gms_by_trans c
+    on a.transaction_id=c.transaction_id
 where 
   a.date >= '2020-01-01' 
 );
+--  create or replace table  etsy-data-warehouse-dev.madelinecollins.tiag_order_visits as (
+-- select 
+--   a.is_gift
+--   , a.date
+--   , b.visit_id
+--   , c.trans_gms_net
+-- from 
+--   etsy-data-warehouse-prod.transaction_mart.all_transactions a
+-- inner join 
+--   etsy-data-warehouse-prod.transaction_mart.transactions_visits b
+--   using (transaction_id)
+-- left join 
+--   etsy-data-warehouse-prod.transaction_mart.transactions_gms_by_trans c
+--     on a.transaction_id=c.transaction_id
+-- where 
+--   a.date >= '2020-01-01' 
+-- );
+
+with yearly_metrics as (
+select
+  extract(year from v._date) as year
+  , count(distinct v.visit_id) as total_visits
+  , count(distinct intent.visit_id) as gift_intent_visits 
+  , count(distinct case when is_gift=1 then tiag.visit_id) as tiag_visits 
+  , sum(case when tiag.visit_id is not null and tiag.is_gift=1 then v.total_gms end)/count(distinct case when tiag.is_gift=1 then tiag.visit_id end) as tiag_acvv
+  , sum(case when tiag.visit_id is not null and tiag.is_gift=1 then tiag.trans_gms_net end)/count(distinct case when tiag.is_gift=1 then tiag.visit_id end) as tiag_acvv_trans
+ , count(distinct case when tiag.is_gift=1 then tiag.visit_id end)/ count(distinct intent.visit_id end) as tiag_conversion_rate
+from 
+  etsy-data-warehouse-prod.weblog.visits visits
+left join 
+  --GIFT INTENT VISITS intent
+left join 
+  etsy-data-warehouse-dev.madelinecollins.tiag_order_visits tiag
+    on a.visit_id=c.visit_id
+where 
+  v._date >= '2020-01-01'
+  --v._date between '2023-01-01' and '2023-04-09'
+  --or v._date between '2024-01-01' and '2024-04-09'
+group by 1
+)
+SELECT
+  a.year AS current_year
+  , a.tiag_visits AS current_year_tiag_visits
+  , b.tiag_visits AS previous_year_tiag_visits
+  , a.tiag_acvv AS current_year_tiag_acvv
+  , b.tiag_acvv AS previous_year_tiag_acvv
+  , a.tiag_acvv_trans AS current_year_tiag_acvv_trans
+  , b.tiag_acvv_trans AS previous_year_tiag_acvv_trans
+  , a.tiag_conversion_rate AS current_year_tiag_conversion_rate
+  , b.tiag_conversion_rate AS previous_year_tiag_conversion_rate
+  , ((a.tiag_visits - b.tiag_visits) / b.tiag_visits) * 100 AS yoy_growth_tiag_visits  
+  , ((a.tiag_acvv - b.tiag_acvv) / b.tiag_acvv) * 100 AS yoy_growth_tiag_acvv
+  , ((a.tiag_acvv_trans - b.tiag_acvv_trans) / b.tiag_acvv_trans) * 100 AS yoy_growth_tiag_acvv_trans
+  , ((a.tiag_conversion_rate - b.tiag_conversion_rate) / b.tiag_conversion_rate) * 100 AS yoy_growth_tiag_conversion_rate
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+group by 1,2,3,4,5,6,7,8,9
+ORDER BY
+  a.year;
