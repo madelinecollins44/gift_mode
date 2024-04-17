@@ -775,6 +775,7 @@ inner join
 where 
   b._date >= '2022-01-01'
   and a._date >= '2022-01-01'
+  and platform in ('mobile_web', 'desktop')
   and regexp_contains(query, "(\?i)\\bgift|\\bfor (\\bhim|\\bher|\\bmom|\\bdad|\\bmother|\\bfather|\\bdaughter|\\bson|\\bwife|\\bhusband|\\bpartner|\\baunt|\\buncle|\\bniece|\\bnephew|\\bfiance|\\bcousin|\\bin law|\\bboyfriend|\\bgirlfriend|\\bgrand|\\bfriend|\\bbest friend)")-- onyl gift queries 
 );
 ------------------------------------------------------------------------
