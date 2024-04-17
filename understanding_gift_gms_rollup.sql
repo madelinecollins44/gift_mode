@@ -612,7 +612,7 @@ where _date >= '2020-01-01'
 group by 1,2
 );
 
---yoy metrics calcs
+--yoy metrics calcs: gms metrics
 with yearly_metrics as (
 select
   extract(year from v._date) as year
@@ -654,3 +654,68 @@ ON
 group by 1,2,3,4,5,6,7,8,9
 ORDER BY
   a.year;
+
+--visits yoy, segmenting by query
+with yearly_metrics as (
+select
+  extract(year from v._date) as year
+  , count(distinct v.visit_id) as total_visits
+  , count(distinct qv.visit_id) as total_visits_w_queries
+  , count(distinct case when qv.gift_query=1 then qv.visit_id end) as total_visits_w_gift_queries
+from 
+  etsy-data-warehouse-prod.weblog.visits v
+left join 
+  etsy-data-warehouse-dev.madelinecollins.gift_query_visits qv
+    using (visit_id)
+where 
+  -- v._date >= '2020-01-01'
+  v._date between '2023-01-01' and '2023-04-09'
+  or v._date between '2024-01-01' and '2024-04-09'
+group by 1
+)
+SELECT
+  a.year AS current_year
+  , a.total_visits AS current_year_visits
+  , b.total_visits AS previous_year_visits
+  , a.total_visits_w_queries AS current_year_visits_w_queries
+  , b.total_visits_w_queries AS previous_year_visits_w_queries
+  , a.total_visits_w_gift_queries AS current_year_visits_w_gift_queries
+  , b.total_visits_w_gift_queries AS previous_year_visits_w_gift_queries
+  , ((a.total_visits - b.total_visits) / b.total_visits) * 100 AS yoy_growth_visits  
+  , ((a.total_visits_w_queries - b.total_visits_w_queries) / b.total_visits_w_queries) * 100 AS yoy_growth_visits_w_queries 
+  , ((a.total_visits_w_gift_queries - b.total_visits_w_gift_queries) / b.total_visits_w_gift_queries) * 100 AS yoy_growth_visits_w_gift_queries
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+group by 1,2,3,4,5,6,7,8,9
+ORDER BY
+  a.year;
+------------------------------------------------------------------------
+VOLUME OF TOP 50 GIFT QUERIES YOY
+------------------------------------------------------------------------
+create or replace table etsy-data-warehouse-dev.madelinecollins.top_50_gift_queries as (
+with all_queries as (
+SELECT
+  extract(year from _date) as year
+  , query
+  , rank() over (order by count(distinct visit_id) desc) as query_rank
+  , count(distinct visit_id) as visits
+FROM 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+JOIN 
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm 
+    USING (query)
+WHERE 
+  _date >= '2020-01-01'
+  and is_gift > 0
+group by 1,2
+)
+select * 
+from 
+  all_queries 
+where 
+  query_rank <= 50 
+); 
