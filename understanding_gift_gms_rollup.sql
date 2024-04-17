@@ -596,3 +596,21 @@ ON
 group by 1,2,3,4,5,6,7,8,9
 ORDER BY
   a.year;
+
+------------------------------------------------------------------------
+GIFT QUERY VISITS YOY 
+------------------------------------------------------------------------
+create or replace table etsy-data-warehouse-dev.madelinecollins.gift_query_visits as (
+select
+  extract(year from _date) as year
+ , qs.visit_id
+  , max(case when qm.is_gift = 1 then 1 else 0 end) as gift_query
+from 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+join 
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm 
+    USING (query)
+where _date >= '2020-01-01'
+group by 1,2
+);
+
