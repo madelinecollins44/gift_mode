@@ -782,6 +782,7 @@ where
 CREATE GIFT INTENT VISITS TABLE FOR DENOMINATOR OF TIAG CONVERSION RATE
 ------------------------------------------------------------------------
 BEGIN
+
 create or replace temporary table visits as (
 with visits as (
 select
@@ -796,13 +797,13 @@ select
 	case when b.landing_event = "search" then regexp_replace(regexp_replace(regexp_substr(lower(b.landing_event_url), "q=([a-z0-9%+]+)"),"\\\\+"," "),"%20"," ") else null end as landing_search_query,
 	case when b.landing_event = "finds_page" then lower(regexp_substr(b.landing_event_url, "featured\\/([^\\/\\?]+)")) else null end as landing_gg_slug
 from
-	`etsy-data-warehouse-prod.weblog.recent_visits` b
+	`etsy-data-warehouse-prod.weblog.visits` b
 left join 
 	-- data around channels (top_channel, utm_campaign, etc.) should be taken from buyatt_mart which is canonical marketing source
 	`etsy-data-warehouse-prod.buyatt_mart.visits` v
 using(visit_id)
 where 
-	b._date > '2020-01-01'
+	b._date >= '2020-01-01'
 	and b.platform in ("boe","desktop","mobile_web") --remove soe
 	and b.is_admin_visit != 1 --remove admin
 	and (b.user_id is null or b.user_id not in (
@@ -830,10 +831,9 @@ where (
 	or e.event_type like "gift_mode%"
 	or e.event_type in ("search","category_page","category_page_hub","market", "shop_home", "finds_page", 
 		"giftreceipt_view","gift_recipientview_boe_view","gift_receipt")
-
 	)
 and e.page_view = 1
-and e._date > '2020-01-01'
+and e._date > '2020-01-01' -- event table only goes back 30 days 
 qualify row_number() over(partition by v.visit_id order by e.sequence_number) = 1  --first action event only
 )
 select 
@@ -949,17 +949,8 @@ left join
 create or replace table etsy-data-warehouse-dev.madelinecollins.gift_intent_visits as (
 select
 	visit_id
-	, case 
-    when (landing_event like "gift_mode%" or landing_event in ("gift_recipientview_boe_view","giftreceipt_view","gift_receipt")) then 1
-    when (first_action_type like "gift_mode%" or landing_event in ("gift_recipientview_boe_view","giftreceipt_view","gift_receipt")) then 1
-    when utm_campaign like "%gift%" then 1
-    when first_action_category_page like "%gift%" then 1
-    when gift_query > 0 then 1
-    when gg_slug_clean like "%gift%" then 1
-    when gift_title > 0 then 1
-	  else 0 
-  end as gift_visit
-from category_visits_full
+from 
+	category_visits_full
 where 
    (case 
     when (landing_event like "gift_mode%" or landing_event in ("gift_recipientview_boe_view","giftreceipt_view","gift_receipt")) then 1
@@ -972,3 +963,18 @@ where
 	  else 0 end)=1 
 );
 end
+------------------------------------------------------------------------
+YOY FOR TIAG ORDERS
+------------------------------------------------------------------------
+ create or replace table  etsy-data-warehouse-dev.madelinecollins.tiag_order_visits as (
+select 
+  a.is_gift
+, b.visit_id
+from 
+  etsy-data-warehouse-prod.transaction_mart.all_transactions a
+inner join 
+  etsy-data-warehouse-prod.transaction_mart.transactions_visits b
+  using (transaction_id)
+where 
+  a.date >= '2020-01-01' 
+);
