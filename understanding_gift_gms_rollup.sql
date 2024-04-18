@@ -621,14 +621,14 @@ GIFT QUERY VISITS YOY
 -- where _date >= '2020-01-01'
 -- group by 1,2
 -- );
-
+--get trans_gms_net for all visits 
 -- create or replace table etsy-data-warehouse-dev.madelinecollins.gift_query_visits_trans as (
 -- select
 --   a.year
---   , a.visit_id
 --   , a.gift_query
---   , b.transaction_id
-  -- , sum(c.trans_gms_net) as trans_gms_net
+--   , a.visit_id
+--   -- , b.transaction_id
+--   , sum(c.trans_gms_net) as trans_gms_net
 -- from 
 --   etsy-data-warehouse-dev.madelinecollins.gift_query_visits a
 -- left join 
@@ -637,7 +637,7 @@ GIFT QUERY VISITS YOY
 -- left join 
 -- 	`etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans c 
 --     on b.transaction_id=c.transaction_id
--- group by 1,2,3,4
+-- group by 1,2,3
 -- );
 
 --yoy metrics calcs: gms metrics
@@ -648,8 +648,8 @@ select
   -- , count(distinct case when qv.gift_query=1 then qv.visit_id end) as total_visits_w_gift_queries
   , count(distinct case when qv.gift_query=1 and v.converted =1 then qv.visit_id end) as total_visits_w_gift_queries_convert
   -- , sum(case when qv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then qv.visit_id end) as total_acvv_query
-  , sum(case when qv.visit_id is not null and qv.gift_query =1 then v.total_gms end)/count(distinct case when v.converted=1 and qv.gift_query=1 then qv.visit_id end) as total_acvv_gift_query
-    , sum(case when qv.visit_id is not null and qv.gift_query =1 then qv.trans_gms_net end)/count(distinct case when v.converted=1 and qv.gift_query=1 then qv.visit_id end) as total_acvv_gift_query_trans
+  , sum(case when qv.gift_query =1 then v.total_gms end)/count(distinct case when v.converted=1 and qv.gift_query=1 then qv.visit_id end) as total_acvv_gift_query
+    , sum(case when qv.gift_query =1 then qv.trans_gms_net end)/count(distinct case when v.converted=1 and qv.gift_query=1 then qv.visit_id end) as total_acvv_gift_query_trans
   -- , count(distinct case when v.converted =1 then qv.visit_id end)/ count(distinct qv.visit_id) as total_conversion_rate_query
   , count(distinct case when v.converted =1 and qv.gift_query =1 then qv.visit_id end)/ count(distinct case when qv.gift_query=1 then qv.visit_id end) as total_conversion_rate_gift_query
 from 
@@ -1042,7 +1042,7 @@ YOY FOR TIAG ORDERS
 --   a.is_gift
 --   , a.date
 --   , b.visit_id
---   , c.trans_gms_net
+--   , sum(c.trans_gms_net) as trans_gms_net
 -- from 
 --   etsy-data-warehouse-prod.transaction_mart.all_transactions a
 -- inner join 
@@ -1053,6 +1053,7 @@ YOY FOR TIAG ORDERS
 --     on a.transaction_id=c.transaction_id
 -- where 
 --   a.date >= '2020-01-01' 
+-- group by 1,2,3
 -- );
 	
 -- create or replace table `etsy-data-warehouse-dev.madelinecollins.gift_intent_visits_agg` as (
