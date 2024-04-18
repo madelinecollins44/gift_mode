@@ -762,32 +762,32 @@ group by 1,2,3,4
 ORDER BY
   a.year;
 
-------------------------------------------------------------------------
-VOLUME OF SEARCH SOURCE YOY
-------------------------------------------------------------------------
-create or replace table etsy-data-warehouse-dev.madelinecollins.gift_query_search_source as (
+-------------------------------------------------------------------------------
+VOLUME OF SEARCH SOURCE -- 2024 ONLY BC DONT HAVE DATA TILL SECOND HALF OF 2023
+-------------------------------------------------------------------------------
 select
-b._date
-, b.platform
+  extract(year from a._date) as year
  , case 
     when search_source like ('hp_%') then 'homepage'
+    when search_source in ('search_bar','auto') then 'search_bar, auto -- buyer typed'
     when search_source like ('catnav%') then 'catnav'
     when search_source like ('cat_hobby%') then 'cat_hobby'
     when search_source like ('s2_qi%') then 'query_ingresses'
     else split(search_source, '-')[safe_offset(0)]
   end as search_source
-, a.visit_id
+, count(distinct a.visit_id) as visits
 from 
-  etsy-data-warehouse-prod.search.events a
+  etsy-data-warehouse-prod.search.query_sessions_new a
 inner join
   etsy-data-warehouse-prod.weblog.visits b
     using (visit_id)
 where 
-  b._date >= '2022-01-01'
-  and a._date >= '2022-01-01'
-  and platform in ('mobile_web', 'desktop')
-  and regexp_contains(query, "(\?i)\\bgift|\\bfor (\\bhim|\\bher|\\bmom|\\bdad|\\bmother|\\bfather|\\bdaughter|\\bson|\\bwife|\\bhusband|\\bpartner|\\baunt|\\buncle|\\bniece|\\bnephew|\\bfiance|\\bcousin|\\bin law|\\bboyfriend|\\bgirlfriend|\\bgrand|\\bfriend|\\bbest friend)")-- onyl gift queries 
-);
+  (b._date between '2024-01-01' and '2024-04-09'
+  and a._date between '2024-01-01' and '2024-04-09')
+  and b.platform in ('mobile_web', 'desktop')
+  and regexp_contains(query, "(\?i)\\bgift|\\bfor (\\bhim|\\bher|\\bmom|\\bdad|\\bmother|\\bfather|\\bdaughter|\\bson|\\bwife|\\bhusband|\\bpartner|\\baunt|\\buncle|\\bniece|\\bnephew|\\bfiance|\\bcousin|\\bin law|\\bboyfriend|\\bgirlfriend|\\bgrand|\\bfriend|\\bbest friend)")
+group by 1,2
+order by 3 desc
 ------------------------------------------------------------------------
 CREATE GIFT INTENT VISITS TABLE FOR DENOMINATOR OF TIAG CONVERSION RATE
 ------------------------------------------------------------------------
