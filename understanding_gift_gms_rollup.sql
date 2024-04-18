@@ -1069,9 +1069,9 @@ select
   , count(distinct v.visit_id) as total_visits
   -- , count(distinct intent.visit_id) as gift_intent_visits 
   , count(distinct case when is_gift=1 then tiag.visit_id end) as tiag_visits 
-  , sum(case when tiag.visit_id is not null and tiag.is_gift=1 then v.total_gms end)/count(distinct case when tiag.is_gift=1 then tiag.visit_id end) as tiag_acvv
-  , sum(case when tiag.visit_id is not null and tiag.is_gift=1 then tiag.trans_gms_net end)/count(distinct case when tiag.is_gift=1 then tiag.visit_id end) as tiag_acvv_trans
- , count(distinct case when tiag.is_gift=1 then tiag.visit_id end)/ count(distinct intent.visit_id) as tiag_conversion_rate
+  , sum(case when tiag.visit_id is not null and tiag.is_gift=1 then v.total_gms end)/nullif(count(distinct case when tiag.is_gift=1 then tiag.visit_id end),0) as tiag_acvv
+  , sum(case when tiag.visit_id is not null and tiag.is_gift=1 then tiag.trans_gms_net end)/nullif(count(distinct case when tiag.is_gift=1 then tiag.visit_id end),0) as tiag_acvv_trans
+ , count(distinct case when tiag.is_gift=1 then tiag.visit_id end)/ nullif(count(distinct intent.visit_id),0) as tiag_conversion_rate
 from 
   etsy-data-warehouse-prod.weblog.visits v
 left join 
@@ -1096,10 +1096,10 @@ SELECT
   , b.tiag_acvv_trans AS previous_year_tiag_acvv_trans
   , a.tiag_conversion_rate AS current_year_tiag_conversion_rate
   , b.tiag_conversion_rate AS previous_year_tiag_conversion_rate
-  , ((a.tiag_visits - b.tiag_visits) / b.tiag_visits) * 100 AS yoy_growth_tiag_visits  
-  , ((a.tiag_acvv - b.tiag_acvv) / b.tiag_acvv) * 100 AS yoy_growth_tiag_acvv
-  , ((a.tiag_acvv_trans - b.tiag_acvv_trans) / b.tiag_acvv_trans) * 100 AS yoy_growth_tiag_acvv_trans
-  , ((a.tiag_conversion_rate - b.tiag_conversion_rate) / b.tiag_conversion_rate) * 100 AS yoy_growth_tiag_conversion_rate
+  , ((a.tiag_visits - b.tiag_visits) / nullif(b.tiag_visits,0)) * 100 AS yoy_growth_tiag_visits  
+  , ((a.tiag_acvv - b.tiag_acvv) / nullif(b.tiag_acvv,0)) * 100 AS yoy_growth_tiag_acvv
+  , ((a.tiag_acvv_trans - b.tiag_acvv_trans) / nullif(b.tiag_acvv_trans,0)) * 100 AS yoy_growth_tiag_acvv_trans
+  , ((a.tiag_conversion_rate - b.tiag_conversion_rate) / nullif(b.tiag_conversion_rate,0)) * 100 AS yoy_growth_tiag_conversion_rate
 FROM
   yearly_metrics a
 JOIN
