@@ -782,7 +782,7 @@ where
 CREATE GIFT INTENT VISITS TABLE FOR DENOMINATOR OF TIAG CONVERSION RATE
 ------------------------------------------------------------------------
 --create tables for each year to speed up 
-	create or replace table etsy-data-warehouse-dev.madelinecollins.visits_since_jan1_2022 as (
+create or replace table etsy-data-warehouse-dev.madelinecollins.visits_since_jan1_2022 as (
 select
 	b.visit_id
   , b._date
@@ -800,27 +800,14 @@ where
 	and b.is_admin_visit != 1 --remove admin
 ); 
 --------------------------------
-begin
-
+begin 
 create or replace temporary table visits as (
-with unions as (
-select 
-* 
-from etsy-data-warehouse-dev.madelinecollins.visits_since_jan1_2024
-union all
-select 
-* 
-from etsy-data-warehouse-dev.madelinecollins.visits_since_jan1_2023
-union all
-select 
-* 
-from etsy-data-warehouse-dev.madelinecollins.visits_since_jan1_2022
-)
-, visits as (
+with visits as (
 select
 	b._date,
 	b.visit_id,
 	b.user_id,
+  b.landing_event,
 	b.landing_event_url,
 	v.utm_campaign,
 	case when b.landing_event = "market" then lower(regexp_replace(regexp_replace(regexp_substr(b.landing_event_url, "market/([^?]*)"), "_", " "), "\\%27", "")) else null end as landing_market_query,
@@ -828,7 +815,7 @@ select
 	case when b.landing_event = "search" then regexp_replace(regexp_replace(regexp_substr(lower(b.landing_event_url), "q=([a-z0-9%+]+)"),"\\\\+"," "),"%20"," ") else null end as landing_search_query,
 	case when b.landing_event = "finds_page" then lower(regexp_substr(b.landing_event_url, "featured\\/([^\\/\\?]+)")) else null end as landing_gg_slug
 from
-	unions b
+	etsy-data-warehouse-dev.madelinecollins.visits_since_jan1_2022 b
 left join 
 	-- data around channels (top_channel, utm_campaign, etc.) should be taken from buyatt_mart which is canonical marketing source
 	`etsy-data-warehouse-prod.buyatt_mart.visits` v
@@ -884,10 +871,6 @@ left join
 on 
 	v.visit_id = fa.visit_id 
 );
-
-
---get information about query taxonomy
-
 create or replace temporary table query_sessions_temp as (
 with queries as (
 select
@@ -919,9 +902,6 @@ from
 	queries 
 where rn = 1	-- most common categorization for a given query
 );
-
---get listing taxonomy information 
-
 create or replace temporary table listing_attributes_temp as (
 select 
 	distinct l.listing_id,
@@ -938,10 +918,6 @@ where l.listing_id in (
 	select listing_id_clean from visits
 	) 
 );
-
-
--- get information about gift GMS 
-
 create or replace temporary table purchases as (
 with all_purch as (
 select
@@ -1000,9 +976,6 @@ on
 group by 1,2
 )
 ;
-
--- pull everything together 
-
 create or replace temporary table category_visits_full as (
 select
 	b._date,
@@ -1034,9 +1007,6 @@ left join
 on 
 	b.visit_id = p.visit_id
 );
-
--- classify visits and save intermediary table 
-
 create or replace temporary table classified_visits as (
 select
 	v.*
@@ -1053,7 +1023,7 @@ from
 )
 ;
 
-create or replace table `etsy-data-warehouse-dev.madelinecollins.gift_intent_visits_all` as (
+create or replace table `etsy-data-warehouse-dev.madelinecollins.gift_intent_visits_all_2022` as (
 select 
 	_date
 	, visit_id 
@@ -1067,24 +1037,7 @@ end
 ------------------------------------------------------------------------
 YOY FOR TIAG ORDERS
 ------------------------------------------------------------------------
- create or replace table  etsy-data-warehouse-dev.madelinecollins.tiag_order_visits as (
-select 
-  a.is_gift
-  , a.date
-  , b.visit_id
-  , c.trans_gms_net
-from 
-  etsy-data-warehouse-prod.transaction_mart.all_transactions a
-inner join 
-  etsy-data-warehouse-prod.transaction_mart.transactions_visits b
-  using (transaction_id)
-left join 
-  etsy-data-warehouse-prod.transaction_mart.transactions_gms_by_trans c
-    on a.transaction_id=c.transaction_id
-where 
-  a.date >= '2020-01-01' 
-);
---  create or replace table  etsy-data-warehouse-dev.madelinecollins.tiag_order_visits as (
+-- create or replace table  etsy-data-warehouse-dev.madelinecollins.tiag_order_visits as (
 -- select 
 --   a.is_gift
 --   , a.date
@@ -1101,6 +1054,14 @@ where
 -- where 
 --   a.date >= '2020-01-01' 
 -- );
+	
+-- create or replace table `etsy-data-warehouse-dev.madelinecollins.gift_intent_visits_agg` as (
+-- select * from `etsy-data-warehouse-dev.madelinecollins.gift_intent_visits_all_2024`
+-- union all
+-- select * from `etsy-data-warehouse-dev.madelinecollins.gift_intent_visits_all_2023`
+-- union all
+-- select * from `etsy-data-warehouse-dev.madelinecollins.gift_intent_visits_all_2022`
+-- );
 
 with yearly_metrics as (
 select
@@ -1114,8 +1075,9 @@ select
 from 
   etsy-data-warehouse-prod.weblog.visits v
 left join 
---   --GIFT INTENT VISITS intent
--- left join 
+  `etsy-data-warehouse-dev.madelinecollins.gift_intent_visits_agg` intent
+    using (visit_id)
+left join 
   etsy-data-warehouse-dev.madelinecollins.tiag_order_visits tiag
     on v.visit_id=tiag.visit_id
 where 
