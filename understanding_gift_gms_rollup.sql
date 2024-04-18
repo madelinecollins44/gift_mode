@@ -434,6 +434,50 @@ from
   where date >= '2020-01-01'
   group by 1 
 
+------------------------------------------------------------------------
+ACTIVE LISTINGS + PURCHASE METRICS OF GIFT IN TITLE LISTINGS 2023-24
+------------------------------------------------------------------------
+--data on views + conversion rates
+with get_views as (
+select
+  listing_id
+  , count(visit_id) as views
+  , count(case when purchased_in_visit = 1 then visit_id end) as purchased_in_visit
+from
+  etsy-data-warehouse-prod.analytics.listing_views 
+where 
+  --  (c._date between date('2024-01-01') and date('2024-04-09'))
+   (_date between date('2023-01-01') and date('2023-04-09'))
+group by 1 
+)
+select 
+case when regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
+  , sum(c.views) as views 
+  , sum(c.purchased_in_visit) 
+  , sum(c.purchased_in_visit)  / sum(c.views) as conversion_rate
+from 
+  etsy-data-warehouse-prod.listing_mart.listing_titles b
+left join 
+  get_views c 
+    on b.listing_id=c.listing_id
+group by 1
+
+
+--data on inventory 
+select 
+case when regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
+  , count(distinct a.listing_id) as active_listings
+  , avg(a.price_usd)/100 as avg_price --this table  as listing price in cents
+  , count(distinct top_category) as unique_categories
+from 
+  etsy-data-warehouse-prod.incrementals.listing_daily a
+inner join 
+  etsy-data-warehouse-prod.listing_mart.listing_titles b
+    using(listing_id)
+where 
+  -- (a.date between '2024-01-01' and '2024-04-09')
+  (a.date between date('2023-01-01') and date('2023-04-09'))
+group by 1
 
 ------------------------------------------------------------------------
 YoY METRICS FOR GIFT TITLE 
