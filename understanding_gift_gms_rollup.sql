@@ -767,27 +767,33 @@ VOLUME OF SEARCH SOURCE -- 2024 ONLY BC DONT HAVE DATA TILL SECOND HALF OF 2023
 -------------------------------------------------------------------------------
 select
   extract(year from a._date) as year
+ , qm.is_gift -- regexp logic flag.
  , case 
-    when search_source like ('hp_%') then 'homepage'
+    when search_source like ('hp_%') OR search_source like ('homepage%')  then 'homepage'
     when search_source in ('search_bar','auto') then 'search_bar, auto -- buyer typed'
     when search_source like ('catnav%') then 'catnav'
     when search_source like ('cat_hobby%') then 'cat_hobby'
+    when search_source like ('hub_stashgrid_module%') then 'hub_stashgrid_module'
     when search_source like ('s2_qi%') then 'query_ingresses'
+    when search_source like ('s2_rbl%') then 'morelikethis_button'
+    when search_source IS NULL THEN NULL
     else split(search_source, '-')[safe_offset(0)]
   end as search_source
 , count(distinct a.visit_id) as visits
+, count(distinct a.visit_id) / SUM(COUNT(DISTINCT a.visit_id)) OVER (PARTITION BY qm.is_gift) AS perc_visits
 from 
   etsy-data-warehouse-prod.search.query_sessions_new a
+join `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
 inner join
   etsy-data-warehouse-prod.weblog.visits b
-    using (visit_id)
+    using (visit_id, _date)
 where 
-  (b._date between '2024-01-01' and '2024-04-09'
-  and a._date between '2024-01-01' and '2024-04-09')
+  ((b._date between '2023-01-01' and '2023-04-09') or (b._date between '2024-01-01' and '2024-04-09'))
   and b.platform in ('mobile_web', 'desktop')
-  and regexp_contains(query, "(\?i)\\bgift|\\bfor (\\bhim|\\bher|\\bmom|\\bdad|\\bmother|\\bfather|\\bdaughter|\\bson|\\bwife|\\bhusband|\\bpartner|\\baunt|\\buncle|\\bniece|\\bnephew|\\bfiance|\\bcousin|\\bin law|\\bboyfriend|\\bgirlfriend|\\bgrand|\\bfriend|\\bbest friend)")
-group by 1,2
-order by 3 desc
+group by 1,2,3
+QUALIFY count(distinct a.visit_id) / SUM(COUNT(DISTINCT a.visit_id)) OVER (PARTITION BY qm.is_gift) > 0.01 -- exclude weird edge cases that make up <1% of traffic
+order by 4 desc
+;
 ------------------------------------------------------------------------
 CREATE GIFT INTENT VISITS TABLE FOR DENOMINATOR OF TIAG CONVERSION RATE
 ------------------------------------------------------------------------
