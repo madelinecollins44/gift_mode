@@ -443,11 +443,12 @@ YoY METRICS FOR GIFT TITLE
  select
   extract(year from b.date) as year
   , b.visit_id
+  , a.transaction_id
 from 
   (select 
    transaction_id 
   from 
-     etsy-data-warehouse-prod.transaction_mart.all_transactions a
+    etsy-data-warehouse-prod.transaction_mart.all_transactions a
    inner join 
     etsy-data-warehouse-prod.listing_mart.listing_titles b
        using (listing_id)
@@ -504,6 +505,8 @@ select
   , count(distinct gtv.visit_id) as gift_title_visits 
   , sum(v.total_gms)/count(distinct case when v.converted=1 then v.visit_id end) as total_acvv
   , sum(case when gtv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then gtv.visit_id end) as gift_title_acvv
+  , sum(t.trans_gms_net)/count(distinct case when v.converted=1 then v.visit_id end) as total_acvv_trans
+  , sum(case when gtv.visit_id is not null then t.trans_gms_net end)/count(distinct case when v.converted=1 then gtv.visit_id end) as gift_title_acvv_trans
   , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct views.visit_id) as total_conversion_rate
   , count(distinct case when gtv.visit_id is not null and v.converted=1 then v.visit_id end)/ count(distinct case when views.gift_title=1 then views.visit_id end) as gift_title_conversion_rate
 from 
@@ -514,10 +517,13 @@ left join
 left join 
   etsy-data-warehouse-dev.madelinecollins.gift_title_views views
     on v.visit_id=views.visit_id
+left join 
+	`etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans t 
+    on gtv.transaction_id=t.transaction_id
 where 
-  v._date >= '2020-01-01'
-  --v._date between '2023-01-01' and '2023-04-09'
-  --or v._date between '2024-01-01' and '2024-04-09'
+  -- v._date >= '2020-01-01'
+  v._date between '2023-01-01' and '2023-04-09'
+  or v._date between '2024-01-01' and '2024-04-09'
 group by 1
 )
 SELECT
@@ -526,10 +532,13 @@ SELECT
   , b.gift_title_visits AS previous_year_visits
   , a.gift_title_acvv AS current_year_acvv
   , b.gift_title_acvv AS previous_year_acvv
+  , a.gift_title_acvv_trans AS current_year_acvv
+  , b.gift_title_acvv_trans AS previous_year_acvv
   , a.gift_title_conversion_rate AS current_year_conversion_rate
   , b.gift_title_conversion_rate AS previous_year_conversion_rate
   , ((a.gift_title_visits - b.gift_title_visits) / b.gift_title_visits) * 100 AS yoy_growth_visits  
   , ((a.gift_title_acvv - b.gift_title_acvv) / b.gift_title_acvv) * 100 AS yoy_growth_acvv
+  , ((a.gift_title_acvv_trans - b.gift_title_acvv_trans) / b.gift_title_acvv_trans) * 100 AS yoy_growth_acvv_trans
   , ((a.gift_title_conversion_rate - b.gift_title_conversion_rate) / b.gift_title_conversion_rate) * 100 AS yoy_growth_conversion_rate
 FROM
   yearly_metrics a
@@ -540,6 +549,7 @@ ON
 group by 1,2,3,4,5,6,7,8,9
 ORDER BY
   a.year;
+
 
 ------------------------------------------------------------------------
 LISTING IN GIFT TITLE VS ACTIVE LISTINGS YOY
