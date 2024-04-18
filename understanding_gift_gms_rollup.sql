@@ -608,19 +608,37 @@ ORDER BY
 ------------------------------------------------------------------------
 GIFT QUERY VISITS YOY 
 ------------------------------------------------------------------------
-create or replace table etsy-data-warehouse-dev.madelinecollins.gift_query_visits as (
-select
-  extract(year from _date) as year
- , qs.visit_id
-  , max(case when qm.is_gift = 1 then 1 else 0 end) as gift_query
-from 
-  `etsy-data-warehouse-prod.search.query_sessions_new` qs
-join 
-  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm 
-    USING (query)
-where _date >= '2020-01-01'
-group by 1,2
-);
+-- create or replace table etsy-data-warehouse-dev.madelinecollins.gift_query_visits as (
+-- select
+--   extract(year from _date) as year
+--  , qs.visit_id
+--   , max(case when qm.is_gift = 1 then 1 else 0 end) as gift_query
+-- from 
+--   `etsy-data-warehouse-prod.search.query_sessions_new` qs
+-- join 
+--   `etsy-data-warehouse-prod.rollups.query_level_metrics` qm 
+--     USING (query)
+-- where _date >= '2020-01-01'
+-- group by 1,2
+-- );
+
+-- create or replace table etsy-data-warehouse-dev.madelinecollins.gift_query_visits_trans as (
+-- select
+--   a.year
+--   , a.visit_id
+--   , a.gift_query
+--   , b.transaction_id
+  -- , sum(c.trans_gms_net) as trans_gms_net
+-- from 
+--   etsy-data-warehouse-dev.madelinecollins.gift_query_visits a
+-- left join 
+--   etsy-data-warehouse-prod.transaction_mart.transactions_visits b 
+--     using (visit_id)
+-- left join 
+-- 	`etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans c 
+--     on b.transaction_id=c.transaction_id
+-- group by 1,2,3,4
+-- );
 
 --yoy metrics calcs: gms metrics
 with yearly_metrics as (
@@ -631,12 +649,13 @@ select
   , count(distinct case when qv.gift_query=1 and v.converted =1 then qv.visit_id end) as total_visits_w_gift_queries_convert
   -- , sum(case when qv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then qv.visit_id end) as total_acvv_query
   , sum(case when qv.visit_id is not null and qv.gift_query =1 then v.total_gms end)/count(distinct case when v.converted=1 and qv.gift_query=1 then qv.visit_id end) as total_acvv_gift_query
+    , sum(case when qv.visit_id is not null and qv.gift_query =1 then qv.trans_gms_net end)/count(distinct case when v.converted=1 and qv.gift_query=1 then qv.visit_id end) as total_acvv_gift_query_trans
   -- , count(distinct case when v.converted =1 then qv.visit_id end)/ count(distinct qv.visit_id) as total_conversion_rate_query
   , count(distinct case when v.converted =1 and qv.gift_query =1 then qv.visit_id end)/ count(distinct case when qv.gift_query=1 then qv.visit_id end) as total_conversion_rate_gift_query
 from 
   etsy-data-warehouse-prod.weblog.visits v
 left join 
-  etsy-data-warehouse-dev.madelinecollins.gift_query_visits qv
+  etsy-data-warehouse-dev.madelinecollins.gift_query_visits_trans qv
     using (visit_id)
 where 
   v._date >= '2020-01-01'
@@ -650,10 +669,13 @@ SELECT
   , b.total_visits_w_gift_queries_convert AS previous_year_visits
   , a.total_acvv_gift_query AS current_year_acvv
   , b.total_acvv_gift_query AS previous_year_acvv
+  , a.total_acvv_gift_query_trans AS current_year_acvv_trans
+  , b.total_acvv_gift_query_trans AS previous_year_acvv_trans
   , a.total_conversion_rate_gift_query AS current_year_conversion_rate
   , b.total_conversion_rate_gift_query AS previous_year_conversion_rate
   , ((a.total_visits_w_gift_queries_convert - b.total_visits_w_gift_queries_convert) / b.total_visits_w_gift_queries_convert) * 100 AS yoy_growth_visits  
   , ((a.total_acvv_gift_query - b.total_acvv_gift_query) / b.total_acvv_gift_query) * 100 AS yoy_growth_acvv
+  , ((a.total_acvv_gift_query_trans - b.total_acvv_gift_query_trans) / b.total_acvv_gift_query_trans) * 100 AS yoy_growth_acvv_trans
   , ((a.total_conversion_rate_gift_query - b.total_conversion_rate_gift_query) / b.total_conversion_rate_gift_query) * 100 AS yoy_growth_conversion_rate
 FROM
   yearly_metrics a
@@ -665,44 +687,6 @@ group by 1,2,3,4,5,6,7,8,9
 ORDER BY
   a.year;
 
---visits yoy, segmenting by query
-with yearly_metrics as (
-select
-  extract(year from v._date) as year
-  , count(distinct v.visit_id) as total_visits
-  , count(distinct qv.visit_id) as total_visits_w_queries
-  , count(distinct case when qv.gift_query=1 then qv.visit_id end) as total_visits_w_gift_queries
-from 
-  etsy-data-warehouse-prod.weblog.visits v
-left join 
-  etsy-data-warehouse-dev.madelinecollins.gift_query_visits qv
-    using (visit_id)
-where 
-  -- v._date >= '2020-01-01'
-  v._date between '2023-01-01' and '2023-04-09'
-  or v._date between '2024-01-01' and '2024-04-09'
-group by 1
-)
-SELECT
-  a.year AS current_year
-  , a.total_visits AS current_year_visits
-  , b.total_visits AS previous_year_visits
-  , a.total_visits_w_queries AS current_year_visits_w_queries
-  , b.total_visits_w_queries AS previous_year_visits_w_queries
-  , a.total_visits_w_gift_queries AS current_year_visits_w_gift_queries
-  , b.total_visits_w_gift_queries AS previous_year_visits_w_gift_queries
-  , ((a.total_visits - b.total_visits) / b.total_visits) * 100 AS yoy_growth_visits  
-  , ((a.total_visits_w_queries - b.total_visits_w_queries) / b.total_visits_w_queries) * 100 AS yoy_growth_visits_w_queries 
-  , ((a.total_visits_w_gift_queries - b.total_visits_w_gift_queries) / b.total_visits_w_gift_queries) * 100 AS yoy_growth_visits_w_gift_queries
-FROM
-  yearly_metrics a
-JOIN
-  yearly_metrics b
-ON
-  a.year = b.year + 1
-group by 1,2,3,4,5,6,7,8,9
-ORDER BY
-  a.year;
 ------------------------------------------------------------------------
 VOLUME OF TOP 50 GIFT QUERIES YOY
 ------------------------------------------------------------------------
