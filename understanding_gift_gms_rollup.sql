@@ -1109,3 +1109,14 @@ ON
 group by 1,2,3,4,5,6,7,8,9
 ORDER BY
   a.year;
+
+---query to check 
+select
+  extract(year from date) as year
+, is_gift
+, count(distinct transaction_id) as transactions
+, count(distinct receipt_id) as receipts
+from 
+etsy-data-warehouse-prod.transaction_mart.all_transactions 
+where date between '2023-01-01' and '2023-04-09' or date between '2024-01-01' and '2024-04-09'
+group by 1,2
