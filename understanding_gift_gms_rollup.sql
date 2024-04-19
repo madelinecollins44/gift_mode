@@ -527,76 +527,55 @@ group by 1
 YoY METRICS FOR GIFT TITLE 
 --visits, acvv, conversion rate
 ------------------------------------------------------------------------
- create or replace table  etsy-data-warehouse-dev.madelinecollins.gift_title_transaction_visits as (
- select
-  extract(year from b.date) as year
-  , b.visit_id
-  , a.transaction_id
-from 
-  (select 
-   transaction_id 
-  from 
-    etsy-data-warehouse-prod.transaction_mart.all_transactions a
-   inner join 
-    etsy-data-warehouse-prod.listing_mart.listing_titles b
-       using (listing_id)
-  where 
-     date >= '2020-01-01'
-    and regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト")) a
-  inner join 
-    etsy-data-warehouse-prod.transaction_mart.transactions_visits b
-      using (transaction_id)
- );
+-- create or replace table  etsy-data-warehouse-dev.madelinecollins.gift_title_views as (
+-- select 
+--   extract(year from _date) as year
+--   , visit_id
+--   , max(case when regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end) as gift_title
+-- from  
+--   etsy-data-warehouse-prod.analytics.listing_views 
+-- inner join 
+--   etsy-data-warehouse-prod.listing_mart.listing_titles b
+--     using (listing_id)
+-- where 
+--   _date >= '2020-01-01'
+-- group by 1,2
+-- );
 
-create or replace table  etsy-data-warehouse-dev.madelinecollins.gift_title_views as (
-select 
-  extract(year from _date) as year
-  , visit_id
-  , max(case when regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end) as gift_title
-from  
-  etsy-data-warehouse-prod.analytics.listing_views 
-inner join 
-  etsy-data-warehouse-prod.listing_mart.listing_titles b
-    using (listing_id)
-where 
-  _date >= '2020-01-01'
-group by 1,2
-);
-
----YOY CHANGE CALCULATION
---for each year, get # of visits, acvv, conversion rate 
--- --get all visits + year that made transaction with 'gift' in listing title since 2020
---  with gift_title_visits as (
+--  create or replace table  etsy-data-warehouse-dev.madelinecollins.gift_title_transaction_visits as (
 --  select
 --   extract(year from b.date) as year
 --   , b.visit_id
+--   , sum(c.trans_gms_net) as trans_gms_net
 -- from 
 --   (select 
 --    transaction_id 
 --   from 
---      etsy-data-warehouse-prod.transaction_mart.all_transactions a
+--     etsy-data-warehouse-prod.transaction_mart.all_transactions a
 --    inner join 
 --     etsy-data-warehouse-prod.listing_mart.listing_titles b
 --        using (listing_id)
 --   where 
 --      date >= '2020-01-01'
 --     and regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト")) a
---   inner join 
---     etsy-data-warehouse-prod.transaction_mart.transactions_visits b
---       using (transaction_id)
---  )
+-- inner join 
+--   etsy-data-warehouse-prod.transaction_mart.transactions_visits b
+--     using (transaction_id)
+-- left join 
+--   etsy-data-warehouse-prod.transaction_mart.transactions_gms_by_trans c
+--     on a.transaction_id=c.transaction_id
+-- group by all
+--  );
+-- gift title transactions yoy
+
+	
 -- --for each year, get # of visits, acvv, conversion rate 
 with yearly_metrics as (
 select
   extract(year from v._date) as year
-  , count(distinct v.visit_id) as total_visits
   , count(distinct gtv.visit_id) as gift_title_visits 
-  , sum(v.total_gms)/count(distinct case when v.converted=1 then v.visit_id end) as total_acvv
-  , sum(case when gtv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then gtv.visit_id end) as gift_title_acvv
-  , sum(t.trans_gms_net)/count(distinct case when v.converted=1 then v.visit_id end) as total_acvv_trans
-  , sum(case when gtv.visit_id is not null then t.trans_gms_net end)/count(distinct case when v.converted=1 then gtv.visit_id end) as gift_title_acvv_trans
-  , count(distinct case when v.converted =1 then v.visit_id end)/ count(distinct views.visit_id) as total_conversion_rate
-  , count(distinct case when gtv.visit_id is not null and v.converted=1 then v.visit_id end)/ count(distinct case when views.gift_title=1 then views.visit_id end) as gift_title_conversion_rate
+  , sum(case when gtv.visit_id is not null then gtv.trans_gms_net end)/count(distinct gtv.visit_id) as gift_title_acvv
+  , count(distinct gtv.visit_id)/ count(distinct case when views.gift_title=1 then views.visit_id end) as gift_title_conversion_rate
 from 
   etsy-data-warehouse-prod.weblog.visits v
 left join 
@@ -605,39 +584,38 @@ left join
 left join 
   etsy-data-warehouse-dev.madelinecollins.gift_title_views views
     on v.visit_id=views.visit_id
-left join 
-	`etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans t 
-    on gtv.transaction_id=t.transaction_id
+-- left join 
+--   etsy-data-warehouse-prod.transaction_mart.transactions_visits tv
+--     on v.visit_id=tv.visit_id
+-- left join 
+--   etsy-data-warehouse-prod.transaction_mart.transactions_gms_by_trans gms
+--     on tv.transaction_id=gms.transaction_id
 where 
-  -- v._date >= '2020-01-01'
-  v._date between '2023-01-01' and '2023-04-09'
-  or v._date between '2024-01-01' and '2024-04-09'
+  v._date >= '2020-01-01'
+  -- v._date between '2023-01-01' and '2023-04-09'
+  -- or v._date between '2024-01-01' and '2024-04-09'
 group by 1
 )
 SELECT
   a.year AS current_year
-  , a.gift_title_visits AS current_year_visits
-  , b.gift_title_visits AS previous_year_visits
-  , a.gift_title_acvv AS current_year_acvv
-  , b.gift_title_acvv AS previous_year_acvv
-  , a.gift_title_acvv_trans AS current_year_acvv
-  , b.gift_title_acvv_trans AS previous_year_acvv
-  , a.gift_title_conversion_rate AS current_year_conversion_rate
-  , b.gift_title_conversion_rate AS previous_year_conversion_rate
-  , ((a.gift_title_visits - b.gift_title_visits) / b.gift_title_visits) * 100 AS yoy_growth_visits  
-  , ((a.gift_title_acvv - b.gift_title_acvv) / b.gift_title_acvv) * 100 AS yoy_growth_acvv
-  , ((a.gift_title_acvv_trans - b.gift_title_acvv_trans) / b.gift_title_acvv_trans) * 100 AS yoy_growth_acvv_trans
-  , ((a.gift_title_conversion_rate - b.gift_title_conversion_rate) / b.gift_title_conversion_rate) * 100 AS yoy_growth_conversion_rate
+  , a.gift_title_visits AS current_year_gift_visits
+  , b.gift_title_visits AS previous_year_gift_visits
+  , a.gift_title_acvv AS current_year_gift_acvv
+  , b.gift_title_acvv AS previous_year_gift_acvv
+  , a.gift_title_conversion_rate AS current_year_gift_conversion_rate
+  , b.gift_title_conversion_rate AS previous_year_gift_conversion_rate
+  , ((a.gift_title_visits - b.gift_title_visits) / b.gift_title_visits) * 100 AS yoy_growth_gift_visits
+  , ((a.gift_title_acvv - b.gift_title_acvv) / b.gift_title_acvv) * 100 AS yoy_growth_gift_acvv
+  , ((a.gift_title_conversion_rate - b.gift_title_conversion_rate) / b.gift_title_conversion_rate) * 100 AS yoy_growth_gift_conversion_rate
 FROM
   yearly_metrics a
 JOIN
   yearly_metrics b
 ON
   a.year = b.year + 1
-group by 1,2,3,4,5,6,7,8,9
+group by all
 ORDER BY
   a.year;
-
 
 ------------------------------------------------------------------------
 LISTING IN GIFT TITLE VS ACTIVE LISTINGS YOY
@@ -709,14 +687,13 @@ GIFT QUERY VISITS YOY
 -- where _date >= '2020-01-01'
 -- group by 1,2
 -- );
---get trans_gms_net for all visits 
+
 -- create or replace table etsy-data-warehouse-dev.madelinecollins.gift_query_visits_trans as (
 -- select
 --   a.year
 --   , a.gift_query
 --   , a.visit_id
---   -- , b.transaction_id
---   , sum(c.trans_gms_net) as trans_gms_net
+--   , sum(trans_gms_net) as trans_gms_net
 -- from 
 --   etsy-data-warehouse-dev.madelinecollins.gift_query_visits a
 -- left join 
@@ -725,56 +702,48 @@ GIFT QUERY VISITS YOY
 -- left join 
 -- 	`etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans c 
 --     on b.transaction_id=c.transaction_id
--- group by 1,2,3
+-- group by all
 -- );
 
---yoy metrics calcs: gms metrics
 with yearly_metrics as (
 select
-  extract(year from v._date) as year
-  , count(distinct qv.visit_id) as total_visits_w_queries
-  -- , count(distinct case when qv.gift_query=1 then qv.visit_id end) as total_visits_w_gift_queries
-  , count(distinct case when qv.gift_query=1 and v.converted =1 then qv.visit_id end) as total_visits_w_gift_queries_convert
-  -- , sum(case when qv.visit_id is not null then v.total_gms end)/count(distinct case when v.converted=1 then qv.visit_id end) as total_acvv_query
-  , sum(case when qv.gift_query =1 then v.total_gms end)/count(distinct case when v.converted=1 and qv.gift_query=1 then qv.visit_id end) as total_acvv_gift_query
-    , sum(case when qv.gift_query =1 then qv.trans_gms_net end)/count(distinct case when v.converted=1 and qv.gift_query=1 then qv.visit_id end) as total_acvv_gift_query_trans
-  -- , count(distinct case when v.converted =1 then qv.visit_id end)/ count(distinct qv.visit_id) as total_conversion_rate_query
-  , count(distinct case when v.converted =1 and qv.gift_query =1 then qv.visit_id end)/ count(distinct case when qv.gift_query=1 then qv.visit_id end) as total_conversion_rate_gift_query
+  v.platform
+  , extract(year from v._date) as year
+  , count(distinct case when qv.gift_query=1 and v.converted =1 then qv.visit_id end) as total_visits_gift_query
+  , count(distinct case when v.converted=1 and qv.gift_query =1 then qv.visit_id end)/ nullif(count(distinct case when qv.gift_query=1 then qv.visit_id end),0) as total_conversion_rate_gift_query
 from 
   etsy-data-warehouse-prod.weblog.visits v
+-- left join 
+--   etsy-data-warehouse-dev.madelinecollins.gift_query_visits q
+--     using (visit_id)
 left join 
   etsy-data-warehouse-dev.madelinecollins.gift_query_visits_trans qv
-    using (visit_id)
+    on v.visit_id=qv.visit_id
 where 
-  v._date >= '2020-01-01'
-  -- v._date between '2023-01-01' and '2023-04-09'
-  -- or v._date between '2024-01-01' and '2024-04-09'
+  -- v._date >= '2020-01-01'
+  v._date between '2023-01-01' and '2023-04-09'
+  or v._date between '2024-01-01' and '2024-04-09'
 group by 1
 )
 SELECT
-  a.year AS current_year
-  , a.total_visits_w_gift_queries_convert AS current_year_visits
-  , b.total_visits_w_gift_queries_convert AS previous_year_visits
-  , a.total_acvv_gift_query AS current_year_acvv
-  , b.total_acvv_gift_query AS previous_year_acvv
-  , a.total_acvv_gift_query_trans AS current_year_acvv_trans
-  , b.total_acvv_gift_query_trans AS previous_year_acvv_trans
-  , a.total_conversion_rate_gift_query AS current_year_conversion_rate
-  , b.total_conversion_rate_gift_query AS previous_year_conversion_rate
-  , ((a.total_visits_w_gift_queries_convert - b.total_visits_w_gift_queries_convert) / b.total_visits_w_gift_queries_convert) * 100 AS yoy_growth_visits  
-  , ((a.total_acvv_gift_query - b.total_acvv_gift_query) / b.total_acvv_gift_query) * 100 AS yoy_growth_acvv
-  , ((a.total_acvv_gift_query_trans - b.total_acvv_gift_query_trans) / b.total_acvv_gift_query_trans) * 100 AS yoy_growth_acvv_trans
-  , ((a.total_conversion_rate_gift_query - b.total_conversion_rate_gift_query) / b.total_conversion_rate_gift_query) * 100 AS yoy_growth_conversion_rate
+  platform
+ , a.year AS current_year
+  , a.total_visits_gift_query AS current_year_gift_query_visits
+  , b.total_visits_gift_query AS previous_year_gift_query_visits
+  , a.total_conversion_rate_gift_query AS current_year_conversion_rate_query
+  , b.total_conversion_rate_gift_query AS previous_year_conversion_rate_query
+  , ((a.total_visits_gift_query - b.total_visits_gift_query) / nullif(b.total_visits_gift_query,0)) * 100 AS yoy_growth_visits_query 
+  , (a.total_acvv_gift_query - b.total_acvv_gift_query) / (nullif(b.total_acvv_gift_query,0)) * 100 AS yoy_growth_acvv_gift_query
+  , (a.total_conversion_rate_gift_query - b.total_conversion_rate_gift_query) / (nullif(b.total_conversion_rate_gift_query,0)) * 100 AS yoy_growth_conversion_rate_query
 FROM
   yearly_metrics a
 JOIN
   yearly_metrics b
 ON
   a.year = b.year + 1
-group by 1,2,3,4,5,6,7,8,9
+-- group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14
 ORDER BY
   a.year;
-
 ------------------------------------------------------------------------
 VOLUME OF TOP 50 GIFT QUERIES YOY
 ------------------------------------------------------------------------
