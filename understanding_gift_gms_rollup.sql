@@ -860,7 +860,7 @@ select
   , count(distinct case when b.gift_query=1 then b.visit_id end) as gift_query_visits
 from  
   etsy-data-warehouse-prod.weblog.visits a
-inner join 
+left join 
   etsy-data-warehouse-dev.madelinecollins.gift_query_visits b using (visit_id)
 where 
   -- a._date >= '2020-01-01'
