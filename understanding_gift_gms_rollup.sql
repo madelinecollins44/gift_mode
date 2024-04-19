@@ -1,11 +1,12 @@
 ------------------------------------------------------------------------
 SITEWIDE YOY METRICS 
 ------------------------------------------------------------------------
-select
+with yearly_metrics as 
+(select
   extract(year from v._date) as year
   , count(distinct v.visit_id) as visits
   , sum(gms.trans_gms_net)/count(distinct case when v.converted=1 then v.visit_id end) as total_acvv
-  , count(distinct case when v.converted=1 then v.visit_id end)/ count(distinct v.visit_id)
+  , count(distinct case when v.converted=1 then v.visit_id end)/ count(distinct v.visit_id) as conversion_rate
 from 
   etsy-data-warehouse-prod.weblog.visits v
 left join 
@@ -14,10 +15,32 @@ left join
 left join 
   etsy-data-warehouse-prod.transaction_mart.transactions_gms_by_trans gms
     on tv.transaction_id=gms.transaction_id
-where  v._date>= '2020-01-01'
--- (v._date between '2023-01-01' and '2023-04-09'
---   or v._date between '2024-01-01' and '2024-04-09')
+where  
+  -- v._date >= '2020-01-01'
+  (v._date between '2023-01-01' and '2023-04-09'
+  or v._date between '2024-01-01' and '2024-04-09')
 group by 1
+)
+select
+ a.year AS current_year
+  , a.visits as current_year_visits
+  , b.visits as previous_year_visits
+  , a.total_acvv AS current_year_total_acvv
+  , b.total_acvv AS previous_year_total_acvv
+  , a.conversion_rate AS current_year_conversion_rate
+  , b.conversion_rate AS previous_year_conversion_rate
+  , ((a.visits - b.visits) / b.visits) * 100 AS yoy_growth_visits  
+  , ((a.total_acvv - b.total_acvv) / nullif(b.total_acvv,0)) * 100 AS yoy_growth_acvv
+  , ((a.conversion_rate - b.conversion_rate) / nullif((b.conversion_rate),0)) * 100 AS yoy_growth_conversion_rate
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+-- group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+ORDER BY
+  a.year;
 	
 ------------------------------------------------------------------------
 RERUN GIFT GMS ROLLUP TO GET DATA BACK TO 2020
@@ -1188,3 +1211,31 @@ from
 etsy-data-warehouse-prod.transaction_mart.all_transactions 
 where date between '2023-01-01' and '2023-04-09' or date between '2024-01-01' and '2024-04-09'
 group by 1,2
+------------------------------------------------------------------------
+YOY TRANSACTIONS
+------------------------------------------------------------------------
+with yearly_metrics as (
+select
+  extract(year from a.date) as year
+  , count(distinct a.transaction_id) as transactions
+from 
+  etsy-data-warehouse-prod.transaction_mart.all_transactions a
+where 
+  (a.date between '2023-01-01' and '2023-04-09' or a.date between '2024-01-01' and '2024-04-09')
+  -- A.date >= '2020-01-01'
+group by all
+)
+SELECT
+ a.year AS current_year
+  , sum(a.transactions) as current_year_trans
+  , sum(b.transactions) as previous_year_trans
+  , ((a.transactions - b.transactions) / nullif(b.transactions,0)) * 100 AS yoy_growth_transactions 
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+group by all
+ORDER BY
+  a.year;
