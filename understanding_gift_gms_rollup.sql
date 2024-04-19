@@ -849,6 +849,46 @@ ON
 group by 1,2,3,4
 ORDER BY 5 desc;
 
+------------------------
+VISITS W QUERIES YOY
+------------------------
+with yearly_metrics as (
+select
+  extract(year from a._date) as year
+  , count(distinct a.visit_id) as total_visits
+  , count(distinct b.visit_id) as visits_with_queries
+  , count(distinct case when b.gift_query=1 then b.visit_id end) as gift_query_visits
+from  
+  etsy-data-warehouse-prod.weblog.visits a
+inner join 
+  etsy-data-warehouse-dev.madelinecollins.gift_query_visits b using (visit_id)
+where 
+  -- a._date >= '2020-01-01'
+  a._date between '2023-01-01' and '2023-04-09'
+  or a._date between '2024-01-01' and '2024-04-09'
+group by all
+)
+SELECT
+  a.year AS current_year
+  , a.total_visits AS current_year_total_visits
+  , b.total_visits AS previous_year_total_visits
+  , a.visits_with_queries AS current_year_visits_with_queries
+  , b.visits_with_queries AS previous_year_visits_with_queries  
+  , a.gift_query_visits AS current_year_visits_gift_query_visits
+  , b.gift_query_visits AS previous_year_visits_gift_query_visits
+  , ((a.total_visits - b.total_visits) / nullif(b.total_visits,0)) * 100 AS yoy_growth_total_visits
+  , (a.visits_with_queries - b.visits_with_queries) / (nullif(b.visits_with_queries,0)) * 100 AS yoy_growth_visits_with_queries
+  , (a.gift_query_visits - b.gift_query_visits) / (nullif(b.gift_query_visits,0)) * 100 AS yoy_growth_gift_query_visits
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+group by all
+ORDER BY
+  a.year;
+
 -------------------------------------------------------------------------------
 VOLUME OF SEARCH SOURCE -- 2024 ONLY BC DONT HAVE DATA TILL SECOND HALF OF 2023
 -------------------------------------------------------------------------------
