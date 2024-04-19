@@ -716,6 +716,47 @@ ORDER BY
   a.year;
 
 ------------------------------------------------------------------------
+WHERE ARE GIFT LISTING VIEWS COMING FROM
+------------------------------------------------------------------------
+with yearly_metrics as (
+select
+  extract(year from _date) as year
+  , case when regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
+  , ref_tag
+  , count(distinct listing_id) as listings_viewed
+  , count(visit_id) as views
+from
+  etsy-data-warehouse-prod.analytics.listing_views a
+inner join 
+  etsy-data-warehouse-prod.listing_mart.listing_titles b 
+    using (listing_id)
+where 
+  _date between '2023-01-01' and '2023-04-09' or _date between '2024-01-01' and '2024-04-09'
+group by all
+)
+SELECT
+  a.year AS current_year
+  , a.gift_title
+  , a.ref_tag
+  , a.listings_viewed AS current_year_listings_viewed
+  , b.listings_viewed AS previous_year_listings_viewed
+  , a.views AS current_year_views
+  , b.views AS previous_year_views
+  , ((a.listings_viewed - b.listings_viewed) / b.listings_viewed) * 100 AS yoy_growth_listings_viewed
+  , ((a.views - b.views) / b.views) * 100 AS yoy_growth_views
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+  and a.gift_title=b.gift_title
+  and a.ref_tag=b.ref_tag
+group by all
+ORDER BY
+  a.year;
+
+------------------------------------------------------------------------
 GIFT QUERY VISITS YOY 
 ------------------------------------------------------------------------
 -- create or replace table etsy-data-warehouse-dev.madelinecollins.gift_query_visits as (
