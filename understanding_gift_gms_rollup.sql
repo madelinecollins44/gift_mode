@@ -1,4 +1,25 @@
 ------------------------------------------------------------------------
+SITEWIDE YOY METRICS 
+------------------------------------------------------------------------
+select
+  extract(year from v._date) as year
+  , count(distinct v.visit_id) as visits
+  , sum(gms.trans_gms_net)/count(distinct case when v.converted=1 then v.visit_id end) as total_acvv
+  , count(distinct case when v.converted=1 then v.visit_id end)/ count(distinct v.visit_id)
+from 
+  etsy-data-warehouse-prod.weblog.visits v
+left join 
+  etsy-data-warehouse-prod.transaction_mart.transactions_visits tv
+    on v.visit_id=tv.visit_id
+left join 
+  etsy-data-warehouse-prod.transaction_mart.transactions_gms_by_trans gms
+    on tv.transaction_id=gms.transaction_id
+where  v._date>= '2020-01-01'
+-- (v._date between '2023-01-01' and '2023-04-09'
+--   or v._date between '2024-01-01' and '2024-04-09')
+group by 1
+	
+------------------------------------------------------------------------
 RERUN GIFT GMS ROLLUP TO GET DATA BACK TO 2020
 ------------------------------------------------------------------------
 BEGIN 
