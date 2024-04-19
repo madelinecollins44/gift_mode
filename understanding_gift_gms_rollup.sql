@@ -617,6 +617,50 @@ group by all
 ORDER BY
   a.year;
 
+---gift title transactions yoy
+with agg as (
+select
+  date
+  , transaction_id
+  , case when regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_trans
+from  
+    etsy-data-warehouse-prod.transaction_mart.all_transactions a
+   inner join 
+    etsy-data-warehouse-prod.listing_mart.listing_titles b
+       using (listing_id)
+where date >= '2020-01-01'
+)
+, yearly_metrics as (
+select
+  extract(year from date) as year
+  , count(distinct transaction_id) as transaction_id
+  , count(distinct case when gift_trans =1 then transaction_id end) as gift_title_transactions
+from 
+  agg
+where 
+  date >= '2020-01-01'
+  -- v._date between '2023-01-01' and '2023-04-09'
+  -- or v._date between '2024-01-01' and '2024-04-09'
+group by 1
+)
+SELECT
+  a.year AS current_year
+  , a.transaction_id AS current_year_transaction_id
+  , b.transaction_id AS previous_year_transaction_id
+  , a.gift_title_transactions AS current_year_gift_title_transactions
+  , b.gift_title_transactions AS previous_year_gift_title_transactions
+  , ((a.transaction_id - b.transaction_id) / b.transaction_id) * 100 AS yoy_growth_transaction_id
+  , ((a.gift_title_transactions - b.gift_title_transactions) / b.gift_title_transactions) * 100 AS yoy_growth_gift_title_transactions
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+group by all
+ORDER BY
+  a.year;
+
 ------------------------------------------------------------------------
 LISTING IN GIFT TITLE VS ACTIVE LISTINGS YOY
 ------------------------------------------------------------------------
