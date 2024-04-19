@@ -761,45 +761,9 @@ select
   , sum(visits) as total_visits
   , row_number () over (partition by year order by sum(visits) desc) as rank
   from etsy-data-warehouse-dev.madelinecollins.gift_queries
---   (_date between '2023-01-01' and '2023-04-09'
---  or _date between '2024-01-01' and '2024-04-09')
-group by 1,2
-)
-, yearly_metrics as ( -- total visits of the top 50 queries for each year 
-select
-  year
-  , sum(total_visits) as total_visits
-from 
-  agg_queries
-where rank <= 50
-group by 1
-)
-SELECT
-  a.year AS current_year
-  , a.total_visits AS current_year_visits
-  , b.total_visits AS previous_year_visits
-  , ((a.total_visits - b.total_visits) / b.total_visits) * 100 AS yoy_growth_visits  
-
-FROM
-  yearly_metrics a
-JOIN
-  yearly_metrics b
-ON
-  a.year = b.year + 1
-group by 1,2,3,4
-ORDER BY
-  a.year;
----growth of gift specific queries
-with agg_queries as (
-select 
-  year
-  , query
-  , sum(visits) as total_visits
-  , row_number () over (partition by year order by sum(visits) desc) as rank
-  from etsy-data-warehouse-dev.madelinecollins.gift_queries
 where
   (_date between '2023-01-01' and '2023-04-09' or _date between '2024-01-01' and '2024-04-09')
-  _date >= '2020-01-01'
+  -- _date >= '2020-01-01'
 group by 1,2
 )
 , yearly_metrics as ( -- total visits of the top 50 queries for each year 
@@ -827,6 +791,7 @@ ON
   and a.query=b.query
 group by 1,2,3,4
 ORDER BY 5 desc;
+
 -------------------------------------------------------------------------------
 VOLUME OF SEARCH SOURCE -- 2024 ONLY BC DONT HAVE DATA TILL SECOND HALF OF 2023
 -------------------------------------------------------------------------------
