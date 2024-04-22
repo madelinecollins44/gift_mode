@@ -478,6 +478,48 @@ from
   where date >= '2020-01-01'
   group by 1 
 
+
+
+------------------------------------------------------------------------
+LISTING ATTRIBUTES 
+------------------------------------------------------------------------
+-- create or replace table etsy-data-warehouse-dev.madelinecollins.active_listings_title as (
+--   select
+--   a.date
+--   , case when regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
+--   , a.listing_id
+-- from 
+--   etsy-data-warehouse-prod.incrementals.listing_daily a
+-- inner join 
+--   etsy-data-warehouse-prod.listing_mart.listing_titles b
+--     using(listing_id)
+-- where 
+--   (a.date between '2024-01-01' and '2024-04-09') or 
+--   (a.date between date('2023-01-01') and date('2023-04-09'))
+-- group by all
+-- );
+
+select 
+	b.top_category
+  , b.is_personalizable
+  , b.is_digital
+  , d.seller_tier
+  , count(distinct a.listing_id)
+from 
+  etsy-data-warehouse-dev.madelinecollins.active_listings_title a
+left join 
+  `etsy-data-warehouse-prod.listing_mart.listing_attributes` b
+    using (listing_id)
+left join   
+  etsy-data-warehouse-prod.rollups.active_listing_basics c 
+    on a.listing_id=c.listing_id
+left join 
+  etsy-data-warehouse-prod.rollups.seller_basics d
+    on c.shop_id=d.shop_id
+where 
+  a.date between '2023-01-01' and '2023-04-09'
+group by all
+
 ------------------------------------------------------------------------
 ACTIVE LISTINGS + PURCHASE METRICS OF GIFT IN TITLE LISTINGS 2023-24
 ------------------------------------------------------------------------
