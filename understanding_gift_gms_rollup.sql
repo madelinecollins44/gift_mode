@@ -759,7 +759,7 @@ ORDER BY
 ------------------------------------------------------------------------
 GIFT QUERY VISITS YOY 
 ------------------------------------------------------------------------
---- create or replace table etsy-data-warehouse-dev.madelinecollins.gift_query_visits as (
+-- create or replace table etsy-data-warehouse-dev.madelinecollins.gift_query_visits as (
 -- select
 --   extract(year from _date) as year
 --  , qs.visit_id
@@ -795,10 +795,8 @@ select
   extract(year from v._date) as year
   , count(distinct case when qv.gift_query=1 and v.converted =1 then qv.visit_id end) as total_converted_visits_gift_query
   , count(distinct qv.visit_id) as total_visits_query
-
-  , (sum(case when qv.gift_query=1 and v.converted =1 then qv.trans_gms_net end))/(count(distinct case when qv.gift_query=1 then qv.visit_id end)) as acvv_gift_queries
-  , sum(case when v.converted =1 then qv.trans_gms_net end)/ count(distinct qv.visit_id) as acvv_queries
-
+  , (sum(case when qv.gift_query=1 and v.converted =1 then qv.trans_gms_net end))/(count(distinct case when qv.gift_query=1 and v.converted =1 then qv.visit_id end)) as acvv_gift_queries
+  , sum(case when v.converted =1 then qv.trans_gms_net end)/ count(distinct case when v.converted =1 then qv.visit_id end) as acvv_queries
   , count(distinct case when v.converted =1 then qv.visit_id end) as total_converted_visits_query
   , count(distinct case when v.converted=1 and qv.gift_query =1 then qv.visit_id end)/ nullif(count(distinct case when qv.gift_query=1 then qv.visit_id end),0) as total_conversion_rate_gift_query
   , count(distinct case when v.converted=1 then qv.visit_id end)/ nullif(count(distinct qv.visit_id),0) as total_conversion_rate_query
@@ -811,9 +809,9 @@ left join
   etsy-data-warehouse-dev.madelinecollins.gift_query_visits_trans qv
     on v.visit_id=qv.visit_id
 where 
-  -- v._date >= '2020-01-01'
-  v._date between '2023-01-01' and '2023-04-09'
-  or v._date between '2024-01-01' and '2024-04-09'
+  v._date >= '2020-01-01'
+  -- v._date between '2023-01-01' and '2023-04-09'
+  -- or v._date between '2024-01-01' and '2024-04-09'
 group by 1
 )
 SELECT
@@ -836,7 +834,7 @@ SELECT
   , ((a.total_converted_visits_gift_query - b.total_converted_visits_gift_query) / nullif(b.total_converted_visits_gift_query,0)) * 100 AS yoy_growth_visits_gift_query 
   , ((a.total_converted_visits_query - b.total_converted_visits_query) / nullif(b.total_converted_visits_query,0)) * 100 AS yoy_growth_visits_query 
   , (a.acvv_gift_queries - b.acvv_gift_queries) / (nullif(b.acvv_gift_queries,0)) * 100 AS yoy_growth_acvv_gift_query
-  , (a.acvv_queries - b.acvv_queries) / (nullif(b.acvv_queries,0)) * 100 AS yoy_growth_acvv_query
+  , (a.acvv_queries - b.acvv_queries) / (nullif(b.acvv_queries,0)) * 100 AS yoy_growth_acvv_gift_query
   , (a.total_conversion_rate_gift_query - b.total_conversion_rate_gift_query) / (nullif(b.total_conversion_rate_gift_query,0)) * 100 AS yoy_growth_conversion_rate_gift_query
   , (a.total_conversion_rate_query - b.total_conversion_rate_query) / (nullif(b.total_conversion_rate_query,0)) * 100 AS yoy_growth_conversion_rate_query
 FROM
@@ -848,6 +846,7 @@ ON
 -- group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14
 ORDER BY
   a.year;
+
 
 ------------------------------------------------------------------------
 VOLUME OF TOP 50 GIFT QUERIES YOY
