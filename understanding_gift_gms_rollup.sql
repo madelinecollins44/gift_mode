@@ -500,7 +500,8 @@ LISTING ATTRIBUTES
 -- );
 
 select 
-b.top_category
+ a.gift_title
+  , b.top_category
   , b.is_personalizable
   , b.is_digital
   , d.seller_tier
@@ -518,7 +519,6 @@ left join
     on c.shop_id=d.shop_id
 where 
   a.date between '2023-01-01' and '2023-04-09'
-and gift_title=1
 group by all
 
 ------------------------------------------------------------------------
