@@ -1000,6 +1000,7 @@ ORDER BY 5 desc;
 --   , _date
 --   , query
 --   , is_gift
+--   , bin
 --   , count(distinct visit_id) as visits
 -- FROM 
 --   `etsy-data-warehouse-prod.search.query_sessions_new` qs
@@ -1021,6 +1022,7 @@ VOLUME OF QUERIES YOY
 --   , _date
 --   , query
 --   , is_gift
+--   , bin
 --   , count(distinct visit_id) as visits
 -- FROM 
 --   `etsy-data-warehouse-prod.search.query_sessions_new` qs
@@ -1033,29 +1035,36 @@ VOLUME OF QUERIES YOY
 --   -- or _date between '2024-01-01' and '2024-04-09')
 -- group by all);
 
-with yearly_metrics as ( -- total visits of the top 50 queries for each year 
-select 
-  year
-  , sum(visits) as total_visits
-from 
-  etsy-data-warehouse-dev.madelinecollins.gift_queries_segment
--- where (_date between '2023-01-01' and '2023-04-09' or _date between '2024-01-01' and '2024-04-09')
-group by all
-)
+	
+--bin of queries
+with yearly_metrics as 
+(SELECT
+  extract(year from _date) as year
+  , bin
+  , count(distinct visit_id) as visits
+FROM 
+  `etsy-data-warehouse-prod.search.query_sessions_new` qs
+JOIN 
+  `etsy-data-warehouse-prod.rollups.query_level_metrics` qm 
+    USING (query)
+WHERE (_date between '2023-01-01' and '2023-04-09' or _date between '2024-01-01' and '2024-04-09')
+group by all)
 SELECT
   a.year AS current_year
-  , a.total_visits AS current_year_visits
-  , b.total_visits AS previous_year_visits
-  , ((a.total_visits - b.total_visits) / b.total_visits) * 100 AS yoy_growth_visits  
-
+  , a.bin
+  , a.visits AS current_year_visits
+  , b.visits AS previous_year_visits
+  , ((a.visits - b.visits) / b.visits) AS yoy_growth_visits  
 FROM
   yearly_metrics a
 JOIN
   yearly_metrics b
 ON
   a.year = b.year + 1
+  and a.bin=b.bin
 group by all
 ORDER BY 1 desc;
+
 ------------------------
 VISITS W QUERIES YOY
 ------------------------
