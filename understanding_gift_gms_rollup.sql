@@ -1103,28 +1103,24 @@ BUYER SEGMENT CONVERSION AMONG GIFT QUERIES
 with yearly_metrics as 
 (select 
   extract(year from a._date) as year
-  , d.buyer_segment
+  , c.buyer_segment
 -- count(distinct case when a.converted=1 then a.visit_id end) as converted_visits
 -- , count(distinct case when a.converted=1 then b.visit_id end) as converted_query_visits
 -- , count(distinct case when a.converted=1 and b.gift_query =1 then b.visit_id end) as converted_gift_query_visits
- , count(distinct c.visit_id) as converted_visits
-, count(distinct case when b.visit_id is not null then c.visit_id end) as converted_query_visits_trans
-, count(distinct case when b.gift_query =1 then c.visit_id end) as converted_gift_query_visits_trans
+ , count(distinct case when a.converted=1 then a.visit_id end) as converted_visits
+, count(distinct case when a.converted=1 then b.visit_id end) as converted_query_visits_trans
+, count(distinct case when b.gift_query =1 and a.converted=1 then b.visit_id end) as converted_gift_query_visits_trans
 from  
   etsy-data-warehouse-prod.weblog.visits a
 left join 
   etsy-data-warehouse-dev.madelinecollins.gift_query_visits b 
     using (visit_id)
 inner join  --- only want transactions
-  etsy-data-warehouse-prod.visit_mart.visits_transactions c
-    on b.visit_id=c.visit_id
-left join 
-  etsy-data-warehouse-prod.user_mart.mapped_user_profile d
-    on c.mapped_user_id=d.mapped_user_id
+  etsy-data-warehouse-prod.rollups.visits_w_segments c -- use this table bc only goes back to 2023 and thats all i need, gives segment from day of purchase
+    on a.visit_id=c.visit_id
 where 
-  a._date >= '2020-01-01'
-  -- a._date between '2023-01-01' and '2023-04-09'
-  -- or a._date between '2024-01-01' and '2024-04-09'
+  a._date between '2023-01-01' and '2023-04-09'
+  or a._date between '2024-01-01' and '2024-04-09'
 group by all
 )
 select
