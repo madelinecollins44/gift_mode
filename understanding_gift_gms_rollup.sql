@@ -763,6 +763,44 @@ ORDER BY
   a.year;
 
 ------------------------------------------------------------------------
+GIFT LISTING IMPRESSIONS
+------------------------------------------------------------------------
+select 
+  case 
+      when placement like ('%search%') then 'search'
+      when placement like ('%market%') then 'market'
+      when placement like ('%/c/%') or placement like ('%category%') and placement not like ('%home%') then 'category'
+      when placement like ('%listing%') or placement like ('%lp%') then 'listing'
+      when placement like ('%discover%') then 'discover'
+      when placement like ('%home%') then 'home'
+      when placement like ('%similar%') then 'similar'
+      else 'other'
+    end as placement
+  , count(b.listing_id) as all_impressions
+  , count(distinct a.listing_id) as all_listings
+  , count(case when regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then b.listing_id end) as gift_listing_impressions
+  , count(distinct case when regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then a.listing_id end) as all_listings
+  , count(case when regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then b.listing_id end) as non_gift_listing_impressions
+  , count(distinct case when not regexp_contains(title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then a.listing_id end) as all_listings
+  from 
+    etsy-data-warehouse-prod.rollups.organic_impressions b 
+  inner join 
+     etsy-data-warehouse-prod.listing_mart.listing_titles a
+      using (listing_id)
+  where 
+    b._date between '2024-01-01' and '2024-04-09'
+    and (placement like ('%search%')
+      or placement like ('%market%')
+      or placement like ('%/c/%') 
+      or placement like ('%category%') 
+      or placement like ('%listing%') 
+      or placement like ('%lp%')
+      or placement like ('%discover%') 
+      or placement like ('%home%')
+      or placement like ('%similar%'))
+group by all 
+order by 2 desc
+------------------------------------------------------------------------
 WHERE ARE GIFT LISTING VIEWS COMING FROM
 ------------------------------------------------------------------------
 with yearly_metrics as (
