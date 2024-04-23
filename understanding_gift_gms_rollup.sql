@@ -779,9 +779,9 @@ select
   , count(b.listing_id) as all_impressions
   , count(distinct a.listing_id) as all_listings
   , count(case when regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then b.listing_id end) as gift_listing_impressions
-  , count(distinct case when regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then a.listing_id end) as all_listings
-  , count(case when regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then b.listing_id end) as non_gift_listing_impressions
-  , count(distinct case when not regexp_contains(title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then a.listing_id end) as all_listings
+  , count(distinct case when regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then a.listing_id end) as gift_listings
+  , count(case when not regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then b.listing_id end) as non_gift_listing_impressions
+  , count(distinct case when not regexp_contains(title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then a.listing_id end) as non_gift_listings
   from 
     etsy-data-warehouse-prod.rollups.organic_impressions b 
   inner join 
@@ -1096,6 +1096,60 @@ group by all
 ORDER BY
   a.year;
 
+
+-------------------------------------------------------------------------------
+BUYER SEGMENT CONVERSION AMONG GIFT QUERIES
+-------------------------------------------------------------------------------
+with yearly_metrics as 
+(select 
+  extract(year from a._date) as year
+  , d.buyer_segment
+-- count(distinct case when a.converted=1 then a.visit_id end) as converted_visits
+-- , count(distinct case when a.converted=1 then b.visit_id end) as converted_query_visits
+-- , count(distinct case when a.converted=1 and b.gift_query =1 then b.visit_id end) as converted_gift_query_visits
+ , count(distinct c.visit_id) as converted_visits
+, count(distinct case when b.visit_id is not null then c.visit_id end) as converted_query_visits_trans
+, count(distinct case when b.gift_query =1 then c.visit_id end) as converted_gift_query_visits_trans
+from  
+  etsy-data-warehouse-prod.weblog.visits a
+left join 
+  etsy-data-warehouse-dev.madelinecollins.gift_query_visits b 
+    using (visit_id)
+inner join  --- only want transactions
+  etsy-data-warehouse-prod.visit_mart.visits_transactions c
+    on b.visit_id=c.visit_id
+left join 
+  etsy-data-warehouse-prod.user_mart.mapped_user_profile d
+    on c.mapped_user_id=d.mapped_user_id
+where 
+  a._date >= '2020-01-01'
+  -- a._date between '2023-01-01' and '2023-04-09'
+  -- or a._date between '2024-01-01' and '2024-04-09'
+group by all
+)
+select
+ a.year AS current_year
+ , a.buyer_segment
+ , a.converted_visits as current_year_converted_visits
+ , b.converted_visits as previous_year_converted_visits
+ , a.converted_query_visits_trans as current_year_converted_query_visits_trans
+ , b.converted_query_visits_trans as previous_year_converted_query_visits_trans
+ , a.converted_gift_query_visits_trans as current_year_converted_gift_query_visits_trans
+ , b.converted_gift_query_visits_trans as previous_year_converted_gift_query_visits_trans
+ , ((a.converted_visits - b.converted_visits) / nullif((b.converted_visits),0)) * 100 AS yoy_growth_converted_visits
+ , ((a.converted_query_visits_trans - b.converted_query_visits_trans) / nullif((b.converted_query_visits_trans),0)) * 100 AS yoy_growth_converted_query_visits_trans
+ , ((a.converted_gift_query_visits_trans - b.converted_gift_query_visits_trans) / nullif((b.converted_gift_query_visits_trans),0)) * 100 AS yoy_growth_converted_gift_query_visits_trans
+
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+  and a.buyer_segment=b.buyer_segment
+group by all
+ORDER BY
+  a.year;
 -------------------------------------------------------------------------------
 VOLUME OF SEARCH SOURCE -- 2024 ONLY BC DONT HAVE DATA TILL SECOND HALF OF 2023
 -------------------------------------------------------------------------------
