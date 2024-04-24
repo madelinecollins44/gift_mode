@@ -526,7 +526,8 @@ select
 extract(year from date) as year
 , a.gift_title
   , case 
-      when c.create_date >= '2023-04-09' then 'new seller' --sellers after 2022 cutoff
+      when c.create_date >= '2022-04-09' and c.create_date <= '2023-01-01' then 'new seller' --sellers after 2022 cutoff and before 2023 period
+      -- when d.create_date >= '2023-04-09' then 'new seller' --sellers after 2022 cutoff
       else c.seller_tier_new
     end as seller_tier
   , count(distinct a.listing_id) as listings
@@ -538,9 +539,10 @@ left join
 left join 
   etsy-data-warehouse-prod.rollups.seller_basics c
    on b.shop_id=c.shop_id
-where (a.date between '2024-01-01' and '2024-04-09') 
-  --  (or a.date between '2023-01-01' and '2023-04-09')
+where --(a.date between '2024-01-01' and '2024-04-09') 
+   (a.date between '2023-01-01' and '2023-04-09')
 group by all
+
 
 ------------------------------------------------------------------------
 ACTIVE LISTINGS + PURCHASE METRICS OF GIFT IN TITLE LISTINGS 2023-24
