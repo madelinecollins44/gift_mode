@@ -514,9 +514,6 @@ from
 left join 
   `etsy-data-warehouse-prod.listing_mart.listing_attributes` b
     using (listing_id)
-left join   
-  etsy-data-warehouse-prod.rollups.active_listing_basics c 
-    on a.listing_id=c.listing_id
 where 
   a.date between '2023-01-01' and '2023-04-09'
 group by all
