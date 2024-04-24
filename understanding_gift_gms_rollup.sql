@@ -508,7 +508,6 @@ select
   , b.top_category
   , b.is_personalizable
   , b.is_digital
-  , d.seller_tier
   , count(distinct a.listing_id)
 from 
   etsy-data-warehouse-dev.madelinecollins.active_listings_title a
@@ -518,11 +517,29 @@ left join
 left join   
   etsy-data-warehouse-prod.rollups.active_listing_basics c 
     on a.listing_id=c.listing_id
-left join 
-  etsy-data-warehouse-prod.rollups.seller_basics d
-    on c.shop_id=d.shop_id
 where 
   a.date between '2023-01-01' and '2023-04-09'
+group by all
+
+--seller tiers
+select
+extract(year from date) as year
+, a.gift_title
+  , case 
+      when c.create_date >= '2023-04-09' then 'new seller' --sellers after 2022 cutoff
+      else c.seller_tier_new
+    end as seller_tier
+  , count(distinct a.listing_id) as listings
+from 
+  etsy-data-warehouse-dev.madelinecollins.active_listings_title a
+left join 
+  etsy-data-warehouse-prod.etsy_shard.listings b
+    using (listing_id)
+left join 
+  etsy-data-warehouse-prod.rollups.seller_basics c
+   on b.shop_id=c.shop_id
+where (a.date between '2024-01-01' and '2024-04-09') 
+  --  (or a.date between '2023-01-01' and '2023-04-09')
 group by all
 
 ------------------------------------------------------------------------
