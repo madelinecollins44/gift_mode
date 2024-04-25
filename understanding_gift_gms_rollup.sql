@@ -1,4 +1,57 @@
 ------------------------------------------------------------------------
+WATERFALL CHART- ACTUAL GMS PER DRIVER YTD
+------------------------------------------------------------------------
+with purchases as (
+  select
+  tv.visit_id
+    , sum(t.trans_gms_net) as trans_gms_net
+    , a.is_gift 
+    , case when regexp_contains(title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
+  from 
+    `etsy-data-warehouse-prod`.transaction_mart.all_receipts r 
+  join
+    `etsy-data-warehouse-prod`.transaction_mart.all_transactions a 
+  using(receipt_id)
+  left join 
+    `etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans t 
+  using(transaction_id)
+  inner join 
+    `etsy-data-warehouse-prod`.transaction_mart.transactions_visits tv 
+  on 
+    a.transaction_id = tv.transaction_id
+  left join 
+    `etsy-data-warehouse-prod`.etsy_shard.gift_receipt_options g 
+  on 
+    r.receipt_id = g.receipt_id
+  left join 
+    `etsy-data-warehouse-prod.schlep_views.transactions_vw` v 
+  on 
+    v.transaction_id = a.transaction_id
+  where 
+    a.date between '2024-01-01' and '2024-04-09'
+  group by all
+  )
+  , gift_searches as (
+  SELECT
+    distinct _date, visit_id
+  FROM `etsy-data-warehouse-prod.search.query_sessions_new` qs
+  JOIN `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+  WHERE 
+    _date between '2024-01-01' and '2024-04-09'
+  and is_gift > 0
+  )
+  select
+    sum(case when is_gift > 0 or gift_title > 0 or b.visit_id is not null then trans_gms_net end) as total_gift_gms 
+    , sum(case when is_gift > 0 then trans_gms_net end) as marked_as_gift_gms 
+    , sum(case when b.visit_id is not null and is_gift != 1 then trans_gms_net end) as gift_search_gms 
+    , sum(case when gift_title > 0 and b.visit_id is null and is_gift !=1 then trans_gms_net end) as gift_title_gms 
+  from 
+    purchases a
+  left join 
+    gift_searches b
+  using(visit_id)
+
+------------------------------------------------------------------------
 SITEWIDE YOY METRICS 
 ------------------------------------------------------------------------
 with yearly_metrics as 
