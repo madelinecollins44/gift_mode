@@ -1,55 +1,103 @@
 ------------------------------------------------------------------------
 WATERFALL CHART- ACTUAL GMS PER DRIVER YTD
 ------------------------------------------------------------------------
-with purchases as (
-  select
-  tv.visit_id
-    , sum(t.trans_gms_net) as trans_gms_net
-    , a.is_gift 
-    , case when regexp_contains(title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
-  from 
-    `etsy-data-warehouse-prod`.transaction_mart.all_receipts r 
-  join
-    `etsy-data-warehouse-prod`.transaction_mart.all_transactions a 
-  using(receipt_id)
-  left join 
-    `etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans t 
-  using(transaction_id)
-  inner join 
-    `etsy-data-warehouse-prod`.transaction_mart.transactions_visits tv 
-  on 
-    a.transaction_id = tv.transaction_id
-  left join 
-    `etsy-data-warehouse-prod`.etsy_shard.gift_receipt_options g 
-  on 
-    r.receipt_id = g.receipt_id
-  left join 
-    `etsy-data-warehouse-prod.schlep_views.transactions_vw` v 
-  on 
-    v.transaction_id = a.transaction_id
-  where 
-    a.date between '2024-01-01' and '2024-04-09'
-  group by all
-  )
-  , gift_searches as (
-  SELECT
-    distinct _date, visit_id
-  FROM `etsy-data-warehouse-prod.search.query_sessions_new` qs
-  JOIN `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
-  WHERE 
-    _date between '2024-01-01' and '2024-04-09'
-  and is_gift > 0
-  )
-  select
-    sum(case when is_gift > 0 or gift_title > 0 or b.visit_id is not null then trans_gms_net end) as total_gift_gms 
+begin 
+
+create or replace temporary table purchases as (
+select
+	date(r.creation_tsz) as date 
+	, tv.visit_id
+	, tv.platform_app as platform 
+	, tv.canonical_region as region 
+	, tv.top_channel
+	, r.receipt_id
+	, a.transaction_id 
+	, v.title
+	, a.listing_id
+	, t.trans_gms_net 
+	, a.is_gift 
+	, t.is_gift_card
+	, a.requested_gift_wrap
+	, a.trans_gift_wrap_price
+	, r.is_gift_message
+	, r.prior_receipt_tsz
+	, case when g.receipt_id is not null then 1 else 0 end as is_recipient_view
+	, case when regexp_contains(title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
+from 
+	`etsy-data-warehouse-prod`.transaction_mart.all_receipts r 
+join
+	`etsy-data-warehouse-prod`.transaction_mart.all_transactions a 
+using(receipt_id)
+left join 
+	`etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans t 
+using(transaction_id)
+inner join 
+	`etsy-data-warehouse-prod`.transaction_mart.transactions_visits tv 
+on 
+	a.transaction_id = tv.transaction_id
+left join 
+	`etsy-data-warehouse-prod`.etsy_shard.gift_receipt_options g 
+on 
+	r.receipt_id = g.receipt_id
+left join 
+	`etsy-data-warehouse-prod.schlep_views.transactions_vw` v 
+on 
+	v.transaction_id = a.transaction_id
+where 
+	a.date between '2024-01-01' and '2024-04-09'
+);
+
+
+create or replace temporary table gift_searches as (
+SELECT
+	distinct _date, visit_id
+FROM `etsy-data-warehouse-prod.search.query_sessions_new` qs
+JOIN `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
+WHERE 
+	_date between '2024-01-01' and '2024-04-09'
+and is_gift > 0
+)
+;
+
+create or replace temporary table almost_agg_metrics as (
+select 
+	a.date 
+	, visit_id
+  	, receipt_id	
+    , sum(case when is_gift > 0 or gift_title > 0 or b.visit_id is not null then trans_gms_net end) as total_gift_gms 
     , sum(case when is_gift > 0 then trans_gms_net end) as marked_as_gift_gms 
     , sum(case when b.visit_id is not null and is_gift != 1 then trans_gms_net end) as gift_search_gms 
-    , sum(case when gift_title > 0 and b.visit_id is null and is_gift !=1 then trans_gms_net end) as gift_title_gms 
-  from 
-    purchases a
-  left join 
-    gift_searches b
-  using(visit_id)
+    , sum(case when gift_title > 0 and b.visit_id is null and is_gift !=1 then trans_gms_net end) as gift_title_gms
+from 
+	purchases a
+left join 
+	gift_searches b
+using(visit_id)
+group by all
+)
+;
+
+create or replace temporary table gift_cross_join as (
+  select 
+  a.*
+  ,b.external_source_decay_all
+  from almost_agg_metrics a
+  left join `etsy-data-warehouse-prod.buyatt_mart.attr_by_browser` b
+    on a.visit_id = b.buy_visit_id
+    and a.receipt_id=b.receipt_id
+  where cast(b.receipt_timestamp as date) between '2024-01-01' and '2024-04-09'
+);
+
+create or replace temporary table agg_final as (
+select 
+	sum(total_gift_gms*external_source_decay_all) as total_gift_gms 
+	, sum(marked_as_gift_gms*external_source_decay_all) as marked_as_gift_gms 
+	, sum(gift_search_gms*external_source_decay_all) as gift_search_gms 
+	, sum(gift_title_gms*external_source_decay_all) as gift_title_gms 
+from gift_cross_join
+);
+
+end
 
 ------------------------------------------------------------------------
 SITEWIDE YOY METRICS 
