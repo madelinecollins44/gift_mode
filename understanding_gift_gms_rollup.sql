@@ -691,21 +691,6 @@ group by 1
 YoY METRICS FOR GIFT TITLE 
 --visits, acvv, conversion rate
 ------------------------------------------------------------------------
--- create or replace table  etsy-data-warehouse-dev.madelinecollins.gift_title_views as (
--- select 
---   extract(year from _date) as year
---   , visit_id
---   , max(case when regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end) as gift_title
--- from  
---   etsy-data-warehouse-prod.analytics.listing_views 
--- inner join 
---   etsy-data-warehouse-prod.listing_mart.listing_titles b
---     using (listing_id)
--- where 
---   _date >= '2020-01-01'
--- group by 1,2
--- );
-
 --  create or replace table  etsy-data-warehouse-dev.madelinecollins.gift_title_transaction_visits as (
 --  select
 --   extract(year from b.date) as year
@@ -771,6 +756,54 @@ SELECT
   , ((a.gift_title_visits - b.gift_title_visits) / b.gift_title_visits) * 100 AS yoy_growth_gift_visits
   , ((a.gift_title_acvv - b.gift_title_acvv) / b.gift_title_acvv) * 100 AS yoy_growth_gift_acvv
   , ((a.gift_title_conversion_rate - b.gift_title_conversion_rate) / b.gift_title_conversion_rate) * 100 AS yoy_growth_gift_conversion_rate
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+group by all
+ORDER BY
+  a.year;
+
+-- create or replace table etsy-data-warehouse-dev.madelinecollins.gift_title_views as (
+-- select 
+--   extract(year from _date) as year
+--   , _date
+--   , visit_id
+--   , max(case when regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end) as gift_title
+-- from  
+--   etsy-data-warehouse-prod.analytics.listing_views 
+-- inner join 
+--   etsy-data-warehouse-prod.listing_mart.listing_titles b
+--     using (listing_id)
+-- where 
+--   _date >= '2020-01-01'
+-- group by all
+-- );
+
+----gift title views yoy
+with yearly_metrics as (
+select
+  extract(year from v._date) as year
+  , count(distinct v.visit_id) as visit_with_listing_views
+  , count(distinct case when gift_title =1 then v.visit_id end) as visit_with_gift_listing_views
+from 
+  etsy-data-warehouse-dev.madelinecollins.gift_title_views v
+where 
+  -- v._date >= '2020-01-01'
+  v._date between '2023-01-01' and '2023-04-09'
+  or v._date between '2024-01-01' and '2024-04-09'
+group by 1
+)
+SELECT
+  a.year AS current_year
+  , a.visit_with_listing_views AS visit_with_listing_views
+  , b.visit_with_listing_views AS visit_with_listing_views
+  , a.visit_with_gift_listing_views AS visit_with_gift_listing_views
+  , b.visit_with_gift_listing_views AS visit_with_gift_listing_views
+  , ((a.visit_with_listing_views - b.visit_with_listing_views) / b.visit_with_listing_views) * 100 AS yoy_growth_visit_with_listing_views
+  , ((a.visit_with_gift_listing_views - b.visit_with_gift_listing_views) / b.visit_with_gift_listing_views) * 100 AS yoy_growth_visit_with_gift_listing_views
 FROM
   yearly_metrics a
 JOIN
