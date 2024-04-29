@@ -972,7 +972,26 @@ group by all
 SELECT
   a.year AS current_year
   , a.gift_title
-  , a.ref_tag
+  , case 
+      when a.ref_tag in ('search', 'async_listings_search', 'browselistings', 'search_results') then 'search / listing results'
+      when a.ref_tag in ('home', 'homescreen') then 'home'
+      when a.ref_tag in ('shop_home') then 'shop home view'
+      when a.ref_tag in ('view_listing') then 'listing view'
+      when a.ref_tag in ('category_click','category_page') then 'category search'
+      when a.ref_tag in ('similar_listings','search_similar_items') then 'similar listings'
+      when a.ref_tag in ('favorites','favorites_and_lists','profile_favorite_listings_tab','favorites_shops','profile_favorite_shops_tab','favorite_item','backend_favorite_item2') then 'favorites / favorite shops'
+      when a.ref_tag in ('favorites_tapped_list','collections_view') then 'lists'
+      when a.ref_tag in ('cart_view', 'add_to_cart') then 'cart/ add to cart'
+      when a.ref_tag in ('cart_saved_view','cart_saved_for_later') then 'saved for later'
+      when a.ref_tag in ('you_screen','you_tab_viewed','your_purchases','yr_purchases') then 'you tab + your purchases'
+      when a.ref_tag in ('member_conversations_landing','convo_main','convo_view','conversations_message_read') then 'convos'
+      when a.ref_tag in ('your_account_settings','user_settings','account_setting') then 'account settings'
+      when a.ref_tag in ('backend_cart_payment') then 'payment'
+      when a.ref_tag in ('start_single_listing_checkout','single_listing_overlay_open') then ''
+      when a.ref_tag in ('view_receipt') then 'post purchase'
+      when a.ref_tag in ('Deals Tab') then 'deals tab'
+      else a.ref_tag 
+    end as ref_tag
   , a.listings_viewed AS current_year_listings_viewed
   , b.listings_viewed AS previous_year_listings_viewed
   , a.views AS current_year_views
