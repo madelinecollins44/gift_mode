@@ -791,19 +791,23 @@ select
 from 
   etsy-data-warehouse-dev.madelinecollins.gift_title_views v
 where 
-  -- v._date >= '2020-01-01'
-  v._date between '2023-01-01' and '2023-04-09'
-  or v._date between '2024-01-01' and '2024-04-09'
+  v._date >= '2020-01-01'
+  -- v._date between '2023-01-01' and '2023-04-09'
+  -- or v._date between '2024-01-01' and '2024-04-09'
 group by 1
 )
 SELECT
   a.year AS current_year
   , a.visit_with_listing_views AS visit_with_listing_views
-  , b.visit_with_listing_views AS visit_with_listing_views
+  , b.visit_with_listing_views AS previous_visit_with_listing_views
   , a.visit_with_gift_listing_views AS visit_with_gift_listing_views
-  , b.visit_with_gift_listing_views AS visit_with_gift_listing_views
+  , b.visit_with_gift_listing_views AS previous_visit_with_gift_listing_views
+  , a.visit_with_gift_listing_views/a.visit_with_listing_views as share_gift_listing_views
+  , b.visit_with_gift_listing_views/b.visit_with_listing_views as previous_share_gift_listing_views
   , ((a.visit_with_listing_views - b.visit_with_listing_views) / b.visit_with_listing_views) * 100 AS yoy_growth_visit_with_listing_views
   , ((a.visit_with_gift_listing_views - b.visit_with_gift_listing_views) / b.visit_with_gift_listing_views) * 100 AS yoy_growth_visit_with_gift_listing_views
+  , (((a.visit_with_gift_listing_views/a.visit_with_listing_views) - (b.visit_with_gift_listing_views/b.visit_with_listing_views)) / (b.visit_with_gift_listing_views/b.visit_with_listing_views)) * 100 AS yoy_growth_share_gift_listing_views
+
 FROM
   yearly_metrics a
 JOIN
@@ -915,8 +919,10 @@ ORDER BY
 ------------------------------------------------------------------------
 GIFT LISTING IMPRESSIONS
 ------------------------------------------------------------------------
+with yearly_metrics as (
 select 
-  case 
+  extract(year from _date) as year
+   , case 
       when placement like ('%search%') then 'search'
       when placement like ('%market%') then 'market'
       when placement like ('%/c/%') or placement like ('%category%') and placement not like ('%home%') then 'category'
@@ -928,10 +934,7 @@ select
     end as placement
   , count(b.listing_id) as all_impressions
   , count(distinct a.listing_id) as all_listings
-  , count(case when regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then b.listing_id end) as gift_listing_impressions
-  , count(distinct case when regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then a.listing_id end) as gift_listings
-  , count(case when not regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then b.listing_id end) as non_gift_listing_impressions
-  , count(distinct case when not regexp_contains(title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then a.listing_id end) as non_gift_listings
+  , case when regexp_contains(a.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
   from 
     etsy-data-warehouse-prod.rollups.organic_impressions b 
   inner join 
@@ -949,7 +952,28 @@ select
       or placement like ('%home%')
       or placement like ('%similar%'))
 group by all 
-order by 2 desc
+)
+SELECT
+  a.year AS current_year
+  , a.gift_title
+  -- , a.placement
+  , a.all_impressions AS current_year_all_impressions
+  , b.all_impressions AS previous_year_all_impressions
+  , a.all_listings AS current_year_all_listings
+  , b.all_listings AS previous_year_all_listings
+  , ((a.all_impressions - b.all_impressions) / b.all_impressions) * 100 AS yoy_growth_all_impressions
+  , ((a.all_listings - b.all_listings) / b.all_listings) * 100 AS yoy_growth_all_listings
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+  and a.gift_title=b.gift_title
+-- where a.gift_title=1
+group by all
+ORDER BY
+  a.year;
 ------------------------------------------------------------------------
 WHERE ARE GIFT LISTING VIEWS COMING FROM
 ------------------------------------------------------------------------
@@ -957,7 +981,7 @@ with yearly_metrics as (
 select
   extract(year from _date) as year
   , case when regexp_contains(b.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
-  , ref_tag
+  , referring_page_event
   , count(distinct listing_id) as listings_viewed
   , count(visit_id) as views
 from
@@ -973,25 +997,26 @@ SELECT
   a.year AS current_year
   , a.gift_title
   , case 
-      when a.ref_tag in ('search', 'async_listings_search', 'browselistings', 'search_results') then 'search / listing results'
-      when a.ref_tag in ('home', 'homescreen') then 'home'
-      when a.ref_tag in ('shop_home') then 'shop home view'
-      when a.ref_tag in ('view_listing') then 'listing view'
-      when a.ref_tag in ('category_click','category_page') then 'category search'
-      when a.ref_tag in ('similar_listings','search_similar_items') then 'similar listings'
-      when a.ref_tag in ('favorites','favorites_and_lists','profile_favorite_listings_tab','favorites_shops','profile_favorite_shops_tab','favorite_item','backend_favorite_item2') then 'favorites / favorite shops'
-      when a.ref_tag in ('favorites_tapped_list','collections_view') then 'lists'
-      when a.ref_tag in ('cart_view', 'add_to_cart') then 'cart/ add to cart'
-      when a.ref_tag in ('cart_saved_view','cart_saved_for_later') then 'saved for later'
-      when a.ref_tag in ('you_screen','you_tab_viewed','your_purchases','yr_purchases') then 'you tab + your purchases'
-      when a.ref_tag in ('member_conversations_landing','convo_main','convo_view','conversations_message_read') then 'convos'
-      when a.ref_tag in ('your_account_settings','user_settings','account_setting') then 'account settings'
-      when a.ref_tag in ('backend_cart_payment') then 'payment'
-      when a.ref_tag in ('start_single_listing_checkout','single_listing_overlay_open') then ''
-      when a.ref_tag in ('view_receipt') then 'post purchase'
-      when a.ref_tag in ('Deals Tab') then 'deals tab'
-      else a.ref_tag 
-    end as ref_tag
+      when a.referring_page_event like ('search%') or a.referring_page_event in ('async_listings_search', 'browselistings', 'search_results') then 'search / listing results'
+      when a.referring_page_event in ('home', 'homescreen') then 'home'
+      when a.referring_page_event like ('shop_home%') or a.referring_page_event like ('shop_home_active%') then 'shop home view'
+      when a.referring_page_event like ('sr_gallery%') or a.referring_page_event like ('sc_gallery') then 'sc_gallery/ sr_gallery'
+      when a.referring_page_event in ('view_listing') then 'listing view'
+      when a.referring_page_event in ('category_click','category_page') then 'category search'
+      when a.referring_page_event in ('similar_listings','search_similar_items','similar_items') then 'similar listings'
+      when a.referring_page_event in ('favorites','favorites_and_lists','profile_favorite_listings_tab','favorites_shops','profile_favorite_shops_tab','favorite_item','backend_favorite_item2') then 'favorites / favorite shops'
+      when a.referring_page_event in ('favorites_tapped_list','collections_view') then 'lists'
+      when a.referring_page_event in ('cart_view', 'add_to_cart') then 'cart/ add to cart'
+      when a.referring_page_event in ('cart_saved_view','cart_saved_for_later') then 'saved for later'
+      when a.referring_page_event in ('you_screen','you_tab_viewed','your_purchases','yr_purchases') then 'you tab + your purchases'
+      when a.referring_page_event in ('member_conversations_landing','convo_main','convo_view','conversations_message_read') then 'convos'
+      when a.referring_page_event in ('your_account_settings','user_settings','account_setting') then 'account settings'
+      when a.referring_page_event in ('backend_cart_payment') then 'payment'
+      when a.referring_page_event in ('start_single_listing_checkout','single_listing_overlay_open') then ''
+      when a.referring_page_event in ('view_receipt') then 'post purchase'
+      when a.referring_page_event in ('Deals Tab') then 'deals tab'
+      else a.referring_page_event 
+    end as referring_page_event
   , a.listings_viewed AS current_year_listings_viewed
   , b.listings_viewed AS previous_year_listings_viewed
   , a.views AS current_year_views
@@ -1005,7 +1030,7 @@ JOIN
 ON
   a.year = b.year + 1
   and a.gift_title=b.gift_title
-  and a.ref_tag=b.ref_tag
+  and a.referring_page_event=b.referring_page_event
 group by all
 ORDER BY
   a.year;
