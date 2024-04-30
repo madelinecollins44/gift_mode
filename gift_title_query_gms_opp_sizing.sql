@@ -1,9 +1,18 @@
 ---------------------------------------------
 VISITS + GMS IN LAST 30 DAYS
 --------------------------------------------
+--overall visits 
 select count(distinct visit_id), sum(total_gms) from etsy-data-warehouse-prod.weblog.visits where _date>= current_date-30
---visits
---gms 
+
+--visits with query 
+with raw as 
+  (select distinct visit_id from etsy-data-warehouse-prod.search.query_sessions_new where _date >= current_date-30)
+select 
+count(distinct visit_id) as unique_visits_with_query
+, sum(b.total_gms) as search_gms
+from raw a
+inner join etsy-data-warehouse-prod.weblog.visits b using (visit_id)
+where b._date>= current_date-30  
 
 ---------------------------------------------
 TOP QUERIES IN TIAG ORDERS
