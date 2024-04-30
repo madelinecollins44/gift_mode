@@ -1,4 +1,11 @@
 ---------------------------------------------
+VISITS + GMS IN LAST 30 DAYS
+--------------------------------------------
+select count(distinct visit_id), sum(total_gms) from etsy-data-warehouse-prod.weblog.visits where _date>= current_date-30
+--visits
+--gms 
+
+---------------------------------------------
 TOP QUERIES IN TIAG ORDERS
 --------------------------------------------
 with tiag_orders as (
@@ -36,21 +43,48 @@ order by 3 desc
 ------------------
 QUERIES BY GIFTINESS SCORE
 ----------------
+with raw as (
 select
-  count(distinct visit_id) as unique_visits
-  , count(visit_id) as searches
-  , count(distinct query) as unique_queries 
+  visit_id
+  , avg(overall_giftiness)
 from 
   etsy-data-warehouse-prod.knowledge_base.query_giftiness a
 inner join 
-  etsy-data-warehouse-prod.search.query_sessions_new b using (query)
-where 
-  a._date >= current_date-30 
-  and b._date >= current_date-30 
-group by all 
-having avg(overall_giftiness) >= 0.61
+  etsy-data-warehouse-prod.search.query_sessions_new b 
+    on a.query=b.query
+    and a._date=b._date -- gets avg giftiness score for queries from visit date
+where a._date >= current_date-30 and b._date >= current_date-30
+group by all
+having avg(overall_giftiness) >= 0.51
+)
+select 
+count(distinct visit_id) as unique_visits
+, sum(total_gms) as total_gms
+from 
+  raw a
+inner join 
+  etsy-data-warehouse-prod.weblog.visits b
+    using (visit_id)
+where b._date >= current_date-30
+
+--examples of queries by giftiness score
+select
+  a.query
+  , count(visit_id) as sessions
+  , avg(overall_giftiness) as avg_score
+from 
+  etsy-data-warehouse-prod.knowledge_base.query_giftiness a
+inner join 
+  etsy-data-warehouse-prod.search.query_sessions_new b 
+    on a.query=b.query
+    and a._date=b._date -- gets avg giftiness score for queries from visit date
+where a._date >= current_date-5 and b._date >= current_date-5
+group by all
+having 
+  avg(overall_giftiness) >= 0.41 
+  and avg(overall_giftiness) <= 0.51 
+  and count(visit_id) >= 10000
 order by 2 desc
-	
 ------------------
 GIFT QUERY
 ----------------
