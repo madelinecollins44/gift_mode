@@ -150,3 +150,24 @@ inner join
   etsy-data-warehouse-prod.weblog.visits b 
     using (visit_id)
 where b._date>= current_date-30  
+
+
+------------------------------------------------------------------------
+LISTING RESULTS ON FIRST PAGE OF SEARCH RESULTS
+------------------------------------------------------------------------
+select 
+  query
+  , count(query) as query_sessions 
+  , avg(score) as score
+from 
+  etsy-data-warehouse-prod.rollups.organic_impressions a
+inner join 
+  etsy-data-warehouse-dev.knowledge_base.listing_giftiness_v3 b
+    -- on a._date=date(timestamp_seconds(b.run_date))
+    on a.listing_id=b.listing_id
+where a.placement in ('search', 'async_listings_search', 'browselistings', 'search_results') 
+  and _date>= current_date-30
+  and page_number in ('1')
+group by all
+having count(query) > 1000
+order by 3 desc
