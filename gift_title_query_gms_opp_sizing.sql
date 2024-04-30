@@ -49,9 +49,9 @@ group by all
 order by 3 desc
 
 	
-------------------
+------------------------------------
 QUERIES BY GIFTINESS SCORE
-----------------
+------------------------------------
 with raw as (
 select
   visit_id
@@ -94,51 +94,59 @@ having
   and avg(overall_giftiness) <= 0.51 
   and count(visit_id) >= 10000
 order by 2 desc
-------------------
+
+------------------------------------
 GIFT QUERY
-----------------
+------------------------------------
 with get_visits as (
 SELECT
 	visit_id
-  , is_gift
-  , is_holiday
-  , is_occasion
+  , max(case when is_gift > 0 then 1 else 0 end) as is_gift
+  , max(case when is_holiday > 0 then 1 else 0 end) as is_holiday
+  , max(case when is_occasion > 0 then 1 else 0 end) as is_occasion
+  , max(case when is_gift > 0 or is_holiday >0 or (is_occasion > 0 and is_gift > 0) then 1 else 0 end) as is_gift_holiday_giftoccasion
+  , max(case when is_gift > 0 or is_holiday >0 or is_occasion > 0 or regexp_contains(qm.query, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end) as is_gift_holiday_occasion_regex
+  , max(case when regexp_contains(qm.query, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end) as regex
+  , max(case when qm.query like ('%card%') and qm.query not like ('%business%') and qm.query not like ('%tarot%')and qm.query not like ('%playing%')and qm.query not like ('%playing%')and qm.query not like ('%deck%')  then 1 else 0 end) as greeting_card
+  , max(case when regexp_contains(qm.query, "(\?i)\\bpersonalize|\\bunique|\\bhandmade|\\bcustom") then 1 else 0 end) as gift_attributes
+  , max(case when regexp_contains(qm.query, "(\?i)\\bearring|\\bnecklace|\\bbracelet|\\baccessory|\\bjewelry|\\bcup|\\bmug|\\bcandle") then 1 else 0 end) as gift_items
+  , max(case when regexp_contains(qm.query, "(\?i)\\bcarepackage|\\bcare package") then 1 else 0 end) as carepackage
+  , max(case when regexp_contains(qm.query, "(\?i)\\bgiftbox|\\bgift box") then 1 else 0 end) as giftbox
+  , max(case when regexp_contains(qm.query, "(\?i)\\bpresent") then 1 else 0 end) as present
 FROM `etsy-data-warehouse-prod.search.query_sessions_new` qs
 JOIN `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
 WHERE 
-	_date >= current_date - 60
-  and ((is_gift > 0 or is_holiday > 0 or is_occasion > 0) 
-  or regexp_contains(qm.query, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト"))
+	_date >= current_date - 30
+group by all
 )
 select
-is_gift
-, is_holiday
-, is_occasion
-, count(distinct visit_id)
-etsy-data-warehouse-prod.transaction_mart.transactions_gms_by_trans
---37425603
-
-SELECT
-	count(distinct visit_id)
-FROM `etsy-data-warehouse-prod.search.query_sessions_new` qs
-JOIN `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
-WHERE 
-	_date >= current_date - 60
-  and is_gift > 0
---13773862
-
-SELECT
-	count(distinct visit_id)
-FROM `etsy-data-warehouse-prod.search.query_sessions_new` qs
-JOIN `etsy-data-warehouse-prod.rollups.query_level_metrics` qm USING (query)
-WHERE 
-	_date >= current_date - 60
-  and ((is_gift > 0 or is_holiday > 0)
-  or (is_gift > 0 and is_occasion > 0) -- this is bc occasion can be wonky 
-  or regexp_contains(qm.query, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト"))
---21491454
-
-
-------------------
-GIFT TITLE
-----------------
+count(distinct case when is_gift =1 then a.visit_id end) as visits_is_gift
+, count(distinct case when is_holiday =1 then a.visit_id end) as visits_is_holiday
+, count(distinct case when is_occasion =1 then a.visit_id end) as visits_is_occasion
+, count(distinct case when is_gift_holiday_giftoccasion =1 then a.visit_id end) as visits_is_gift_holiday_giftoccasion
+, count(distinct case when is_gift_holiday_occasion_regex =1 then a.visit_id end) as visits_is_gift_holiday_occasion_regex
+, count(distinct case when regex =1 then a.visit_id end) as visits_regex
+, count(distinct case when greeting_card =1 then a.visit_id end) as visits_greeting_card
+, count(distinct case when gift_attributes =1 then a.visit_id end) as visits_gift_attributes
+, count(distinct case when gift_items =1 then a.visit_id end) as visits_gift_items
+, count(distinct case when carepackage =1 then a.visit_id end) as visits_carepackage
+, count(distinct case when giftbox =1 then a.visit_id end) as visits_giftbox
+, count(distinct case when present =1 then a.visit_id end) as visits_present
+, sum(case when is_gift =1 then b.total_gms end) as gms_is_gift
+, sum(case when is_holiday =1 then b.total_gms end) as gms_is_holiday
+, sum(case when is_occasion =1 then b.total_gms end) as gms_is_occasion
+, sum(case when is_gift_holiday_giftoccasion =1 then b.total_gms end) as gms_is_gift_holiday_giftoccasion
+, sum(case when is_gift_holiday_occasion_regex =1 then b.total_gms end) as gms_is_gift_holiday_occasion_regex
+, sum(case when regex =1 then b.total_gms end) as gms_regex
+, sum(case when greeting_card =1 then b.total_gms end) as gms_greeting_card
+, sum(case when gift_attributes =1 then b.total_gms end) as gms_gift_attributes
+, sum(case when gift_items =1 then b.total_gms end) as gms_gift_items
+, sum(case when carepackage =1 then b.total_gms end) as gms_carepackage
+, sum(case when giftbox =1 then b.total_gms end) as gms_giftbox
+, sum(case when present =1 then b.total_gms end) as gms_present
+from 
+  get_visits a
+inner join 
+  etsy-data-warehouse-prod.weblog.visits b 
+    using (visit_id)
+where b._date>= current_date-30  
