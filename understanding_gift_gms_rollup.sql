@@ -998,10 +998,10 @@ SELECT
   , a.gift_title
   , case 
       when a.referring_page_event like ('search%') or a.referring_page_event in ('async_listings_search', 'browselistings', 'search_results') then 'search / listing results'
-      when a.referring_page_event in ('home', 'homescreen') then 'home'
-      when a.referring_page_event like ('shop_home%') or a.referring_page_event like ('shop_home_active%') then 'shop home view'
+      when a.referring_page_event in ('home', 'homescreen','recommended') then 'home'
+      when a.referring_page_event like ('shop_home%') or a.referring_page_event like ('shop_home_active%') or a.referring_page_event like ('shop_section_view%') then 'shop home'
       when a.referring_page_event like ('sr_gallery%') or a.referring_page_event like ('sc_gallery') then 'sc_gallery/ sr_gallery'
-      when a.referring_page_event in ('view_listing') then 'listing view'
+      when a.referring_page_event in ('view_listing','photo_overlay') then 'listing page'
       when a.referring_page_event in ('category_click','category_page') then 'category search'
       when a.referring_page_event in ('similar_listings','search_similar_items','similar_items') then 'similar listings'
       when a.referring_page_event in ('favorites','favorites_and_lists','profile_favorite_listings_tab','favorites_shops','profile_favorite_shops_tab','favorite_item','backend_favorite_item2') then 'favorites / favorite shops'
