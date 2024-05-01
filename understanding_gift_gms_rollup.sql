@@ -1349,6 +1349,54 @@ ON
 group by all
 ORDER BY
   a.year;
+
+---volume of visits with queries, not converted
+with yearly_metrics as 
+(select 
+  extract(year from a._date) as year
+  , c.buyer_segment
+-- count(distinct case when a.converted=1 then a.visit_id end) as converted_visits
+-- , count(distinct case when a.converted=1 then b.visit_id end) as converted_query_visits
+-- , count(distinct case when a.converted=1 and b.gift_query =1 then b.visit_id end) as converted_gift_query_visits
+ , count(distinct a.visit_id) as total_visits
+, count(distinct b.visit_id) as query_visits
+, count(distinct case when b.gift_query =1 then b.visit_id end) as gift_query_visits
+from  
+  etsy-data-warehouse-prod.weblog.visits a
+left join 
+  etsy-data-warehouse-dev.madelinecollins.gift_query_visits b 
+    using (visit_id)
+inner join  --- only want transactions
+  etsy-data-warehouse-prod.rollups.visits_w_segments c -- use this table bc only goes back to 2023 and thats all i need, gives segment from day of purchase
+    on a.visit_id=c.visit_id
+where 
+  a._date between '2023-01-01' and '2023-04-09'
+  or a._date between '2024-01-01' and '2024-04-09'
+group by all
+)
+select
+ a.year AS current_year
+ , a.buyer_segment
+ , a.total_visits as current_year_visits
+ , b.total_visits as previous_year_visits
+ , a.query_visits as current_year_query_visits
+ , b.query_visits as previous_year_query_visits
+ , a.gift_query_visits as current_year_gift_query_visits
+ , b.gift_query_visits as previous_year_gift_query_visits
+ , ((a.total_visits - b.total_visits) / nullif((b.total_visits),0)) * 100 AS yoy_growth_converted_visits
+ , ((a.query_visits - b.query_visits) / nullif((b.query_visits),0)) * 100 AS yoy_growth_converted_query_visits_trans
+ , ((a.gift_query_visits - b.gift_query_visits) / nullif((b.gift_query_visits),0)) * 100 AS yoy_growth_converted_gift_query_visits_trans
+
+FROM
+  yearly_metrics a
+JOIN
+  yearly_metrics b
+ON
+  a.year = b.year + 1
+  and a.buyer_segment=b.buyer_segment
+group by all
+ORDER BY
+  a.year;
 -------------------------------------------------------------------------------
 VOLUME OF SEARCH SOURCE -- 2024 ONLY BC DONT HAVE DATA TILL SECOND HALF OF 2023
 -------------------------------------------------------------------------------
