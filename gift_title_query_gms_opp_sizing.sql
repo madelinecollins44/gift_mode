@@ -157,27 +157,9 @@ where b._date>= current_date-30
 ------------------------------------------------------------------------
 LISTING RESULTS ON FIRST PAGE OF SEARCH RESULTS
 ------------------------------------------------------------------------
--- create or replace table etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg as (
--- select 
---   a.query
---   , a.listing_id
---   , avg(b.score) as score
---   , a.visit_id
--- from 
---   etsy-data-warehouse-prod.rollups.organic_impressions a
--- inner join 
---   etsy-data-warehouse-dev.knowledge_base.listing_giftiness_v3 b
---     -- on a._date=date(timestamp_seconds(b.run_date))
---     on a.listing_id=b.listing_id
--- where 
---   a.placement in ('search', 'async_listings_search', 'browselistings', 'search_results') 
---   and _date>= current_date-30
---   and page_number in ('1')
---   and query not like ('%gift%')
--- group by all
--- );
 
-with gifty_score as (
+begin 
+create or replace temporary table gifty_score as (
 select 
   query
   , listing_id
@@ -185,64 +167,46 @@ select
 from 
   etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg
 group by all
-), query_count as (
-select distinct 
-  query
-  , visit_id
-from 
-  etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg 
-group by all
-)
-select 
-  b.query  
-  , count(a.query) as sessions
-  , avg(b.score) as score
-from query_count a
-inner join gifty_score b 
-    using (query)
-  group by all
+);
 
---visit coverage 
-with gifty_score as (
-select 
-  query
-  , listing_id
-  , score
-from 
-  etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg
-group by all
-), query_count as (
+create or replace temporary table query_count as (
 select distinct 
   query
   , visit_id
 from 
   etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg 
 group by all
-)
-, visit_level as (
+);
+
+create or replace temporary table visit_level as (
 select 
   a.visit_id
-  , case 
-      when avg(b.score) >= 0 and avg(b.score) < 0.2 then '< 0.2'
-      when avg(b.score) <= 0.3 then '<= 0.3'
-      when avg(b.score) <= 0.4 then '<= 0.4'
-      when avg(b.score) <= 0.5 then '<= 0.5'
-      when avg(b.score) <= 0.6 then '<= 0.6'    
-      when avg(b.score) <= 0.7 then '<= 0.7'
-      when avg(b.score) <= 0.8 then '<= 0.8'    
-      when avg(b.score) <= 0.9 then '<= 0.9'
-      when avg(b.score) <= 1.0 then '<= 1'
-    end as score
+  , avg(b.score) as score
 from query_count a
 inner join gifty_score b 
       using (query)
 group by all
 having count(a.query) >= 10000
-)
+);
+
+create or replace temporary table agg as (
 select
-a.score 
-  , count(distinct a.visit_id) as unique_visits
-  , sum(b.total_gms) as total_gms
+count(distinct case when a.score <= 0.2 then a.visit_id end) as unique_visits_lessthan2
+, count(distinct case when a.score <= 0.3 then a.visit_id end) as unique_visits_lessthan3
+, count(distinct case when a.score <= 0.4 then a.visit_id end) as unique_visits_lessthan4
+, count(distinct case when a.score <= 0.5 then a.visit_id end) as unique_visits_lessthan5
+, count(distinct case when a.score <= 0.6 then a.visit_id end) as unique_visits_lessthan6
+, count(distinct case when a.score <= 0.7 then a.visit_id end) as unique_visits_lessthan7
+, count(distinct case when a.score <= 0.8 then a.visit_id end) as unique_visits_lessthan8
+, count(distinct case when a.score <= 0.9 then a.visit_id end) as unique_visits_lessthan9
+, sum(case when a.score <= 0.2 then b.total_gms end) as total_gms_lessthan2
+, sum(case when a.score <= 0.3 then b.total_gms end) as total_gms_lessthan3
+, sum(case when a.score <= 0.4 then b.total_gms end) as total_gms_lessthan4
+, sum(case when a.score <= 0.5 then b.total_gms end) as total_gms_lessthan5
+, sum(case when a.score <= 0.6 then b.total_gms end) as total_gms_lessthan6
+, sum(case when a.score <= 0.7 then b.total_gms end) as total_gms_lessthan7
+, sum(case when a.score <= 0.8 then b.total_gms end) as total_gms_lessthan8
+, sum(case when a.score <= 0.9 then b.total_gms end) as total_gms_lessthan9
 from 
   visit_level a
 inner join 
@@ -250,3 +214,6 @@ inner join
   using(visit_id)
 where b._date>= current_date-5
 group by all
+);
+
+end
