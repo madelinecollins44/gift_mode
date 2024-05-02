@@ -159,6 +159,7 @@ LISTING RESULTS ON FIRST PAGE OF SEARCH RESULTS
 ------------------------------------------------------------------------
 
 begin 
+--etsy-bigquery-adhoc-prod._scripte3232a8ec45edeac65a992896a79cdf0bfd04201.gifty_score
 create or replace temporary table gifty_score as (
 select 
   query
@@ -169,6 +170,7 @@ from
 group by all
 );
 
+--etsy-bigquery-adhoc-prod._scripte3232a8ec45edeac65a992896a79cdf0bfd04201.query_count
 create or replace temporary table query_count as (
 select distinct 
   query
@@ -178,6 +180,7 @@ from
 group by all
 );
 
+--etsy-bigquery-adhoc-prod._scripte3232a8ec45edeac65a992896a79cdf0bfd04201.visit_level
 create or replace temporary table visit_level as (
 select 
   a.visit_id
@@ -189,6 +192,8 @@ group by all
 having count(a.query) >= 10000
 );
 
+--etsy-bigquery-adhoc-prod._scripte3232a8ec45edeac65a992896a79cdf0bfd04201.agg
+--etsy-bigquery-adhoc-prod._script278c602e50b7a6eb202fab6fd75b306ec7f6c1d9.agg_above
 create or replace temporary table agg as (
 select
 count(distinct case when a.score <= 0.2 then a.visit_id end) as unique_visits_lessthan2
