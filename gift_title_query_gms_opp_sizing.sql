@@ -224,14 +224,14 @@ select
   a.visit_id
   , case 
       when avg(b.score) >= 0 and avg(b.score) < 0.2 then '< 0.2'
-      when avg(b.score) >= 0.2 and avg(b.score) < 0.3 then '<= 0.3'
-      when avg(b.score) >= 0.3 and avg(b.score) < 0.4 then '<= 0.4'
-      when avg(b.score) >= 0.4 and avg(b.score) < 0.5 then '<= 0.5'
-      when avg(b.score) >= 0.5 and avg(b.score) < 0.6 then '<= 0.6'    
-      when avg(b.score) >= 0.6 and avg(b.score) < 0.7 then '<= 0.7'
-      when avg(b.score) >= 0.7 and avg(b.score) < 0.8 then '<= 0.8'    
-      when avg(b.score) >= 0.8 and avg(b.score) < 0.9 then '<= 0.9'
-      when avg(b.score) >= 0.9 and avg(b.score) < 1.0 then '<= 1'
+      when avg(b.score) <= 0.3 then '<= 0.3'
+      when avg(b.score) <= 0.4 then '<= 0.4'
+      when avg(b.score) <= 0.5 then '<= 0.5'
+      when avg(b.score) <= 0.6 then '<= 0.6'    
+      when avg(b.score) <= 0.7 then '<= 0.7'
+      when avg(b.score) <= 0.8 then '<= 0.8'    
+      when avg(b.score) <= 0.9 then '<= 0.9'
+      when avg(b.score) <= 1.0 then '<= 1'
     end as score
 from query_count a
 inner join gifty_score b 
@@ -250,5 +250,3 @@ inner join
   using(visit_id)
 where b._date>= current_date-5
 group by all
-
-
