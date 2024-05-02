@@ -157,22 +157,151 @@ where b._date>= current_date-30
 ------------------------------------------------------------------------
 LISTING RESULTS ON FIRST PAGE OF SEARCH RESULTS
 ------------------------------------------------------------------------
+-- create or replace table etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg as (
+-- select 
+--   a.query
+--   , a.listing_id
+--   , avg(b.score) as score
+--   , a.visit_id
+-- from 
+--   etsy-data-warehouse-prod.rollups.organic_impressions a
+-- inner join 
+--   etsy-data-warehouse-dev.knowledge_base.listing_giftiness_v3 b
+--     -- on a._date=date(timestamp_seconds(b.run_date))
+--     on a.listing_id=b.listing_id
+-- where 
+--   a.placement in ('search', 'async_listings_search', 'browselistings', 'search_results') 
+--   and _date>= current_date-30
+--   and page_number in ('1')
+--   and query not like ('%gift%')
+-- group by all
+-- );
+
+with gifty_score as (
 select 
   query
-  , count(query) as query_sessions 
-  , sum(score)/count(distinct b.listing_id) as score
+  , listing_id
+  , score
 from 
-  etsy-data-warehouse-prod.rollups.organic_impressions a
-inner join 
-  etsy-data-warehouse-dev.knowledge_base.listing_giftiness_v3 b
-    -- on a._date=date(timestamp_seconds(b.run_date))
-    on a.listing_id=b.listing_id
-where a.placement in ('search', 'async_listings_search', 'browselistings', 'search_results') 
-  and _date>= current_date-30
-  and page_number in ('1')
-  -- and query not like ('%gift%')
+  etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg
 group by all
-having 
-  count(query) > 5000
-order by 3,2 desc
-limit 100
+), query_count as (
+select distinct 
+  query
+  , visit_id
+from 
+  etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg 
+group by all
+)
+select 
+  b.query  
+  , count(a.query) as sessions
+  , avg(b.score) as score
+from query_count a
+inner join gifty_score b 
+    using (query)
+  group by all
+
+--visit coverage 
+-- -- create or replace table etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg as (
+-- -- select 
+-- --   a.query
+-- --   , a.listing_id
+-- --   , avg(b.score) as score
+-- --   , a.visit_id
+-- -- from 
+-- --   etsy-data-warehouse-prod.rollups.organic_impressions a
+-- -- inner join 
+-- --   etsy-data-warehouse-dev.knowledge_base.listing_giftiness_v3 b
+-- --     -- on a._date=date(timestamp_seconds(b.run_date))
+-- --     on a.listing_id=b.listing_id
+-- -- where 
+-- --   a.placement in ('search', 'async_listings_search', 'browselistings', 'search_results') 
+-- --   and _date>= current_date-5
+-- --   and page_number in ('1')
+-- --   and query not like ('%gift%')
+-- -- group by all
+-- -- );
+
+-- with gifty_score as (
+-- select 
+--   query
+--   , listing_id
+--   , score
+-- from 
+--   etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg
+-- group by all
+-- ), query_count as (
+-- select distinct 
+--   query
+--   , visit_id
+-- from 
+--   etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg 
+-- group by all
+-- )
+-- select 
+--   b.query  
+--   , count(a.query) as sessions
+--   , count(distinct a.visit_id) visits
+--   , avg(b.score) as score
+-- from query_count a
+-- inner join gifty_score b 
+--     using (query)
+--   group by all
+-- having count(a.query) >= 10000
+
+-- create or replace table etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg as (
+-- select 
+--   a.query
+--   , a.listing_id
+--   , avg(b.score) as score
+--   , a.visit_id
+-- from 
+--   etsy-data-warehouse-prod.rollups.organic_impressions a
+-- inner join 
+--   etsy-data-warehouse-dev.knowledge_base.listing_giftiness_v3 b
+--     -- on a._date=date(timestamp_seconds(b.run_date))
+--     on a.listing_id=b.listing_id
+-- where 
+--   a.placement in ('search', 'async_listings_search', 'browselistings', 'search_results') 
+--   and _date>= current_date-5
+--   and page_number in ('1')
+--   and query not like ('%gift%')
+-- group by all
+-- );
+
+with gifty_score as (
+select 
+  query
+  , listing_id
+  , score
+from 
+  etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg
+group by all
+), query_count as (
+select distinct 
+  query
+  , visit_id
+from 
+  etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg 
+group by all
+)
+select 
+  count(distinct a.visit_id) visits
+  , case 
+      when avg(b.score) >= 0 and avg(b.score) < 0.2 then '< 0.2'
+      when avg(b.score) >= 0.2 and avg(b.score) < 0.3 then '<= 0.3'
+      when avg(b.score) >= 0.3 and avg(b.score) < 0.4 then '<= 0.4'
+      when avg(b.score) >= 0.4 and avg(b.score) < 0.5 then '<= 0.5'
+      when avg(b.score) >= 0.5 and avg(b.score) < 0.6 then '<= 0.6'    
+      when avg(b.score) >= 0.6 and avg(b.score) < 0.7 then '<= 0.7'
+      when avg(b.score) >= 0.7 and avg(b.score) < 0.8 then '<= 0.8'    
+      when avg(b.score) >= 0.8 and avg(b.score) < 0.9 then '<= 0.9'
+      when avg(b.score) >= 0.9 and avg(b.score) < 1.0 then '<= 1'
+    end as score
+from query_count a
+inner join gifty_score b 
+    using (query)
+  group by all
+having count(a.query) >= 10000
+
