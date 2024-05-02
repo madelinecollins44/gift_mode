@@ -203,73 +203,6 @@ inner join gifty_score b
   group by all
 
 --visit coverage 
--- -- create or replace table etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg as (
--- -- select 
--- --   a.query
--- --   , a.listing_id
--- --   , avg(b.score) as score
--- --   , a.visit_id
--- -- from 
--- --   etsy-data-warehouse-prod.rollups.organic_impressions a
--- -- inner join 
--- --   etsy-data-warehouse-dev.knowledge_base.listing_giftiness_v3 b
--- --     -- on a._date=date(timestamp_seconds(b.run_date))
--- --     on a.listing_id=b.listing_id
--- -- where 
--- --   a.placement in ('search', 'async_listings_search', 'browselistings', 'search_results') 
--- --   and _date>= current_date-5
--- --   and page_number in ('1')
--- --   and query not like ('%gift%')
--- -- group by all
--- -- );
-
--- with gifty_score as (
--- select 
---   query
---   , listing_id
---   , score
--- from 
---   etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg
--- group by all
--- ), query_count as (
--- select distinct 
---   query
---   , visit_id
--- from 
---   etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg 
--- group by all
--- )
--- select 
---   b.query  
---   , count(a.query) as sessions
---   , count(distinct a.visit_id) visits
---   , avg(b.score) as score
--- from query_count a
--- inner join gifty_score b 
---     using (query)
---   group by all
--- having count(a.query) >= 10000
-
--- create or replace table etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg as (
--- select 
---   a.query
---   , a.listing_id
---   , avg(b.score) as score
---   , a.visit_id
--- from 
---   etsy-data-warehouse-prod.rollups.organic_impressions a
--- inner join 
---   etsy-data-warehouse-dev.knowledge_base.listing_giftiness_v3 b
---     -- on a._date=date(timestamp_seconds(b.run_date))
---     on a.listing_id=b.listing_id
--- where 
---   a.placement in ('search', 'async_listings_search', 'browselistings', 'search_results') 
---   and _date>= current_date-5
---   and page_number in ('1')
---   and query not like ('%gift%')
--- group by all
--- );
-
 with gifty_score as (
 select 
   query
@@ -286,8 +219,9 @@ from
   etsy-data-warehouse-dev.madelinecollins.gifty_score_first_search_pg 
 group by all
 )
+, visit_level as (
 select 
-  count(distinct a.visit_id) visits
+  a.visit_id
   , case 
       when avg(b.score) >= 0 and avg(b.score) < 0.2 then '< 0.2'
       when avg(b.score) >= 0.2 and avg(b.score) < 0.3 then '<= 0.3'
@@ -301,7 +235,20 @@ select
     end as score
 from query_count a
 inner join gifty_score b 
-    using (query)
-  group by all
+      using (query)
+group by all
 having count(a.query) >= 10000
+)
+select
+a.score 
+  , count(distinct a.visit_id) as unique_visits
+  , sum(b.total_gms) as total_gms
+from 
+  visit_level a
+inner join 
+  etsy-data-warehouse-prod.weblog.visits b 
+  using(visit_id)
+where b._date>= current_date-5
+group by all
+
 
