@@ -97,6 +97,42 @@ having
   and count(visit_id) >= 10000
 order by 2 desc
 
+--share of tiag orders
+	with queries as (
+select
+  visit_id
+  , avg(overall_giftiness) as score
+from 
+  etsy-data-warehouse-prod.knowledge_base.query_giftiness a
+inner join 
+  etsy-data-warehouse-prod.search.query_sessions_new b 
+    on a.query=b.query
+    and a._date=b._date -- gets avg giftiness score for queries from visit date
+where 
+  a._date between '2024-04-02' and '2024-05-02' 
+  and b._date between '2024-04-02' and '2024-05-02' 
+group by all
+)
+select
+count(distinct c.visit_id) as all_gift_transactions
+, count(distinct case when score >= 0.0 then c.visit_id end) as trans_3
+, count(distinct case when score >= 0.11 then c.visit_id end) as trans_3
+, count(distinct case when score >= 0.21 then c.visit_id end) as trans_3
+, count(distinct case when score >= 0.31 then c.visit_id end) as trans_3
+, count(distinct case when score >= 0.41 then c.visit_id end) as trans_4
+, count(distinct case when score >= 0.51 then c.visit_id end) as trans_5
+, count(distinct case when score >= 0.61 then c.visit_id end) as trans_6
+, count(distinct case when score >= 0.71 then c.visit_id end) as trans_7
+, count(distinct case when score >= 0.81 then c.visit_id end) as trans_8
+, count(distinct case when score >= 0.91 then c.visit_id end) as trans_9
+from 
+  etsy-data-warehouse-prod.visit_mart.visits_transactions c
+left join 
+  queries b 
+    on c.visit_id=b.visit_id
+where c.is_gift=1
+and _date between '2024-04-02' and '2024-05-02'
+
 ------------------------------------
 GIFT QUERY
 ------------------------------------
