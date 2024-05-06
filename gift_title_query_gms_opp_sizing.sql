@@ -248,7 +248,7 @@ having avg(overall_giftiness) >= 0.51
 create or replace temporary table keywords as (
 SELECT
 	visit_id
-  , max(case when regexp_contains(qm.query, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end) as regex
+  , max(case when regexp_contains(qm.query, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト|\\bchristmas|\\bhanukkah|\\bvalentine|\\bmothers day|\\bfathers day|\\bbirthday|\\bgraduation|\\bdiwali|\\bkwanzaa|\\bchanukah") then 1 else 0 end) as regex  
   , max(case when qm.query like ('%card%') and qm.query not like ('%business%') and qm.query not like ('%tarot%')and qm.query not like ('%playing%')and qm.query not like ('%playing%')and qm.query not like ('%deck%')  then 1 else 0 end) as greeting_card
   , max(case when regexp_contains(qm.query, "(\?i)\\bcarepackage|\\bcare package") then 1 else 0 end) as carepackage
   , max(case when regexp_contains(qm.query, "(\?i)\\bgiftbox|\\bgift box") then 1 else 0 end) as giftbox
@@ -264,13 +264,11 @@ create or replace temporary table agg as (
 select
   count(distinct case when a.score >= 0.71 then c.visit_id end) as visits_giftiness7
   , count(distinct case when b.regex=1 then c.visit_id end) as visits_regex
-  , count(distinct case when b.regex=1 or greeting_card=1 or carepackage=1 or present=1 then c.visit_id end) as visits_keywords_all
-  , count(distinct case when a.score >= 0.71 or b.regex=1 then c.visit_id end) as visits_giftiness7_regex
+  , count(distinct case when greeting_card=1 or carepackage=1 or present=1 then c.visit_id end) as visits_keywords
   , count(distinct case when a.score >= 0.71 or b.regex=1 or greeting_card=1 or carepackage=1 or present=1 then c.visit_id end) as visits_all
   , sum(case when a.score >= 0.71 then total_gms end) as gms_giftiness7
   , sum(case when b.regex=1 then total_gms end) as gms_regex
-  , sum(case when b.regex=1 or greeting_card=1 or carepackage=1 or giftbox=1 or present=1 then total_gms end) as gms_keywords_all
-  , sum(case when a.score >= 0.71 or b.regex=1 then total_gms end) as gms_giftiness7_regex
+  , sum(case when greeting_card=1 or carepackage=1 or giftbox=1 or present=1 then total_gms end) as gms_keywords
   , sum(case when a.score >= 0.71 or b.regex=1 or greeting_card=1 or carepackage=1 or giftbox=1 or present=1 then total_gms end) as gms_all
 from 
   etsy-data-warehouse-prod.weblog.visits c
