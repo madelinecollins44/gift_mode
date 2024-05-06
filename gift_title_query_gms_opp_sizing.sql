@@ -108,7 +108,7 @@ SELECT
   , max(case when is_occasion > 0 then 1 else 0 end) as is_occasion
   , max(case when is_gift > 0 or is_holiday >0 or (is_occasion > 0 and is_gift > 0) then 1 else 0 end) as is_gift_holiday_giftoccasion
   , max(case when is_gift > 0 or is_holiday >0 or is_occasion > 0 or regexp_contains(qm.query, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end) as is_gift_holiday_occasion_regex
-  , max(case when regexp_contains(qm.query, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end) as regex
+  , max(case when regexp_contains(qm.query, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト|\\bchristmas|\\bhanukkah|\\bvalentine|\\bmothers day|\\bfathers day|\\bbirthday|\\bgraduation|\\bdiwali|\\bkwanzaa|\\bchanukah") then 1 else 0 end) as regex  
   , max(case when qm.query like ('%card%') and qm.query not like ('%business%') and qm.query not like ('%tarot%')and qm.query not like ('%playing%')and qm.query not like ('%playing%')and qm.query not like ('%deck%')  then 1 else 0 end) as greeting_card
   , max(case when regexp_contains(qm.query, "(\?i)\\bpersonalize|\\bunique|\\bhandmade|\\bcustom") then 1 else 0 end) as gift_attributes
   , max(case when regexp_contains(qm.query, "(\?i)\\bearring|\\bnecklace|\\bbracelet|\\baccessory|\\bjewelry|\\bcup|\\bmug|\\bcandle") then 1 else 0 end) as gift_items
