@@ -158,7 +158,8 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.events` AS (
             "backend_add_to_cart",
             "checkout_start",
             "offsite_ads_one_day_attributed_revenue" ,
-            "total_winsorized_order_value" 
+            "total_winsorized_order_value",
+            "visits"
         ]) AS event_id
 );
 
@@ -188,6 +189,115 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.events_per_unit
         bucketing_id, variant_id, event_id
 );
 
+-- Insert custom events separately, as custom event data does not exist in the event table (as of Q4 2023).
+IF bucketing_id_type = 1 THEN -- browser data (see go/catapult-unified-enums)
+    CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.post_bucketing_custom_events` AS (
+        WITH custom_events AS (
+            SELECT
+                a.bucketing_id,
+                v.visit_id,
+                a.variant_id,
+                a.bucketing_ts,
+                v.sequence_number,
+                v.event_name AS event_id,
+                v.event_data AS event_value,
+                v.event_timestamp,
+            FROM
+                `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket` a
+            JOIN
+                `etsy-data-warehouse-prod.catapult.visit_segment_custom_metrics` v
+                ON a.bucketing_id = SPLIT(v.visit_id, '.')[OFFSET(0)]
+            WHERE
+                v._date BETWEEN start_date AND end_date
+                AND v.event_timestamp >= a.bucketing_ts
+                and v.event_name in ('total_winsorized_gms','total_winsorized_order_value','prolist_total_spend','offsite_ads_one_day_attributed_revenue','visits')
+        )
+        SELECT
+            bucketing_id,
+            visit_id,
+            variant_id,
+            bucketing_ts,
+            sequence_number,
+            event_id,
+            event_value,
+            ROW_NUMBER() OVER (
+                PARTITION BY bucketing_id, variant_id, event_id
+                ORDER BY event_timestamp, visit_id, sequence_number
+            ) AS row_number,
+        FROM
+            custom_events
+    );
+
+    INSERT INTO `etsy-data-warehouse-dev.madelinecollins.events_per_unit` (
+        SELECT
+            bucketing_id,
+            variant_id,
+            event_id,
+            SUM(event_value) AS event_value,
+        FROM
+            `etsy-data-warehouse-dev.madelinecollins.post_bucketing_custom_events`
+        WHERE
+            row_number = 1
+            OR (row_number > 1 AND sequence_number = 0)
+        GROUP BY
+            bucketing_id, variant_id, event_id
+    );
+ELSEIF bucketing_id_type = 2 THEN -- user data (see go/catapult-unified-enums)
+    CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.post_bucketing_custom_events` AS (
+        WITH custom_events AS (
+            SELECT
+                a.bucketing_id,
+                c.visit_id,
+                a.variant_id,
+                a.bucketing_ts,
+                c.sequence_number,
+                c.event_name AS event_id,
+                c.event_data AS event_value,
+                c.event_timestamp,
+            FROM
+                `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket` a
+            JOIN
+                `etsy-data-warehouse-prod.catapult.custom_events_by_user_slice` c
+                ON a.bucketing_id = c.user_id
+            WHERE
+                c._date BETWEEN start_date AND end_date
+                AND c.event_timestamp >= a.bucketing_ts
+        )
+        SELECT
+            bucketing_id,
+            visit_id,
+            variant_id,
+            bucketing_ts,
+            sequence_number,
+            event_id,
+            event_value,
+            ROW_NUMBER() OVER (
+                PARTITION BY bucketing_id, variant_id, event_id
+                ORDER BY event_timestamp, visit_id, sequence_number
+            ) AS row_number,
+            ROW_NUMBER() OVER (
+                PARTITION BY bucketing_id, variant_id, event_id, visit_id
+                ORDER BY sequence_number
+            ) AS row_number_in_visit,
+        FROM
+            custom_events
+    );
+
+    INSERT INTO `etsy-data-warehouse-dev.madelinecollins.events_per_unit` (
+        SELECT
+            bucketing_id,
+            variant_id,
+            event_id,
+            SUM(event_value) AS event_value,
+        FROM
+            `etsy-data-warehouse-dev.madelinecollins.post_bucketing_custom_events`
+        WHERE
+            row_number = 1
+            OR (row_number > 1 AND row_number_in_visit = 1)
+        GROUP BY
+            bucketing_id, variant_id, event_id
+    );
+END IF;
 -------------------------------------------------------------------------------------------
 -- COMBINE BUCKETING, EVENT & SEGMENT DATA
 -------------------------------------------------------------------------------------------
@@ -195,7 +305,6 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.events_per_unit
 CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket_clicks` AS (
 select 
   a.bucketing_id,
-  a.bucketing_id_type,
   a.variant_id
 from 
   `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket` a
@@ -216,8 +325,8 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_event
         variant_id,
         event_id,
         COALESCE(event_value, 0) AS event_count,
-        buyer_segment,
-        canonical_region,
+        -- buyer_segment,
+        -- canonical_region,
     FROM
         `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket_clicks`
     CROSS JOIN
@@ -225,9 +334,9 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_event
     LEFT JOIN
         `etsy-data-warehouse-dev.madelinecollins.events_per_unit`
         USING(bucketing_id, variant_id, event_id)
-    JOIN
-        `etsy-data-warehouse-dev.madelinecollins.first_bucket_segments`
-        USING(bucketing_id, variant_id)
+    -- JOIN
+    --     `etsy-data-warehouse-dev.madelinecollins.first_bucket_segments`
+    --     USING(bucketing_id, variant_id)
 );
 
 -------------------------------------------------------------------------------------------
@@ -237,6 +346,7 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_event
 SELECT
     event_id,
     variant_id,
+    count(distinct bucketing_id) as unique_browsers,
     COUNT(*) AS total_units_in_variant,
     AVG(IF(event_count = 0, 0, 1)) AS percent_units_with_event,
     AVG(event_count) AS avg_events_per_unit,
