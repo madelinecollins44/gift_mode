@@ -357,3 +357,142 @@ GROUP BY
     event_id, variant_id
 ORDER BY
     event_id, variant_id;
+
+-------------------------------------------------------------------------------------------
+-- RECREATE CATAPULT RESULTS : browser level so can find stat sig of means 
+-------------------------------------------------------------------------------------------
+-- Proportion and mean metrics by variant and event_name
+CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level` AS (
+SELECT
+    event_id,
+    variant_id,
+    bucketing_id, 
+    event_count,
+FROM
+    `etsy-data-warehouse-dev.madelinecollins.all_units_events_segments`
+GROUP BY
+    all
+ORDER BY
+    event_id, variant_id
+);
+
+CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level_acbv` AS (
+  select * from `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level` where event_id in ('total_winsorized_gms')
+);
+
+CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level_gms` AS (
+  select * from `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level`where event_id in ('gms')
+);
+
+CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level_offsite_ads` AS (
+  select * from `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level` where event_id in ('offsite_ads_one_day_attributed_revenue')
+);
+
+CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level_prolist` AS (
+  select * from `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level` where event_id in ('prolist_total_spend')
+);
+
+CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level_order_value` AS (
+  select * from `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level` where event_id in ('total_winsorized_order_value')
+);
+
+-------------------------------------------------------------------------------------------
+R STAT SIG 
+-------------------------------------------------------------------------------------------
+## Install the bigrquery package if you don't have it yet
+## https://bigrquery.r-dbi.org/index.html
+
+library(bigrquery)
+
+# define your billing project. 99% of the time it should be 
+# etsy-bigquery-adhoc-prod
+
+billing <- 'etsy-bigquery-adhoc-prod'
+
+# Run your query
+
+sql <- "select *
+from 
+  etsy-data-warehouse-dev.madelinecollins.all_units_events_segments"
+
+# Authenticate to bq
+bq_auth()
+
+# Runs query and saves it to a temp table
+tb <- bq_project_query(billing, sql)
+
+# Downloads temp table to a data frame
+df <- bq_table_download(tb)
+
+## conversion rate 
+prop.test(c(57673,58689), c(74793,75460))
+
+## mean visits
+
+treat_f <- df[df$ab_variant == "on", ]
+control_f <- df[df$ab_variant == "off", ]
+
+t.test(treat_f$visits, control_f$visits)
+
+## acbv
+
+sql <- "select * from `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level_acbv`;"
+
+# Runs query and saves it to a temp table
+tb <- bq_project_query(billing, sql)
+
+# download temp table to a data frame
+df <- bq_table_download(tb,page_size=500) 
+
+treat_f <- df[df$ab_variant == "on", ]
+control_f <- df[df$ab_variant == "off", ]
+
+t.test(treat_f$event_count, control_f$event_count)
+
+## gms
+sql <- "select * from `etsy-data-warehouse-all_units_events_browser_level_gms`;"
+
+tb <- bq_project_query(billing, sql)
+
+df <- bq_table_download(tb,page_size=500) 
+
+treat_f <- df[df$ab_variant == "on", ]
+control_f <- df[df$ab_variant == "off", ]
+
+t.test(treat_f$event_count, control_f$event_count)
+
+## offsite ads
+sql <- "select * from `etsy-data-warehouse-all_units_events_browser_level_offsite_ads`;"
+
+tb <- bq_project_query(billing, sql)
+
+df <- bq_table_download(tb,page_size=500) 
+
+treat_f <- df[df$ab_variant == "on", ]
+control_f <- df[df$ab_variant == "off", ]
+
+t.test(treat_f$event_count, control_f$event_count)
+
+## prolist
+sql <- "select * from `etsy-data-warehouse-all_units_events_browser_level_prolist`;"
+
+tb <- bq_project_query(billing, sql)
+
+df <- bq_table_download(tb,page_size=500) 
+
+treat_f <- df[df$ab_variant == "on", ]
+control_f <- df[df$ab_variant == "off", ]
+
+t.test(treat_f$event_count, control_f$event_count)
+
+## order value
+sql <- "select * from `etsy-data-warehouse-all_units_events_browser_level_order_value`;"
+
+tb <- bq_project_query(billing, sql)
+
+df <- bq_table_download(tb,page_size=500) 
+
+treat_f <- df[df$ab_variant == "on", ]
+control_f <- df[df$ab_variant == "off", ]
+
+t.test(treat_f$event_count, control_f$event_count)
