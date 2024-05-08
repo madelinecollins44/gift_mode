@@ -446,18 +446,11 @@ t.test(treat_f$event_count, control_f$event_count)
 -------------------------------------------------------------------------------------------
 CALC MEANS FOR METRICS MANUALLY 
 -------------------------------------------------------------------------------------------
---calc acbv 
 SELECT
     variant_id,
-    sum(case when event_id in ('total_winsorized_gms') then event_count end)/ count(case when event_id in ('total_winsorized_gms') and event_count != 0 then event_id end) as windo 
-FROM
-    `etsy-data-warehouse-dev.madelinecollins.all_units_events_segments`
-group by all
+    sum(case when event_id in ('total_winsorized_order_value') then event_count end)/ sum(case when event_id in ('backend_cart_payment') then event_count end) as Winsorized_aov,
+    sum(case when event_id in ('total_winsorized_gms') then event_count end)/ count(case when event_id in ('total_winsorized_gms') and event_count != 0 then event_id end) as Winsorized_acbv, 
 
---calc AOV
-SELECT
-    variant_id,
-    sum(case when event_id in ('total_winsorized_order_value') then event_count end)/ sum(case when event_id in ('backend_cart_payment') then event_count end) as Winsorized_AOV -- counted here bc event_count is number of payments made so number of orders
 FROM
     `etsy-data-warehouse-dev.madelinecollins.all_units_events_segments`
 group by all
