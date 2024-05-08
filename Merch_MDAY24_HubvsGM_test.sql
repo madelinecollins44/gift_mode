@@ -399,100 +399,45 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_event
 -------------------------------------------------------------------------------------------
 R STAT SIG 
 -------------------------------------------------------------------------------------------
-## Install the bigrquery package if you don't have it yet
-## https://bigrquery.r-dbi.org/index.html
-
-library(bigrquery)
-
-# define your billing project. 99% of the time it should be 
-# etsy-bigquery-adhoc-prod
-
-billing <- 'etsy-bigquery-adhoc-prod'
-
-# Run your query
-
-sql <- "select *
-from 
-  etsy-data-warehouse-dev.madelinecollins.all_units_events_segments"
-
-# Authenticate to bq
-bq_auth()
-
-# Runs query and saves it to a temp table
-tb <- bq_project_query(billing, sql)
-
-# Downloads temp table to a data frame
-df <- bq_table_download(tb)
-
-## conversion rate 
-prop.test(c(57673,58689), c(74793,75460))
-
-## mean visits
-
-treat_f <- df[df$ab_variant == "on", ]
-control_f <- df[df$ab_variant == "off", ]
-
-t.test(treat_f$visits, control_f$visits)
-
 ## acbv
-
 sql <- "select * from `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level_acbv`;"
-
-# Runs query and saves it to a temp table
 tb <- bq_project_query(billing, sql)
-
-# download temp table to a data frame
-df <- bq_table_download(tb,page_size=500) 
-
-treat_f <- df[df$ab_variant == "on", ]
-control_f <- df[df$ab_variant == "off", ]
-
+df <- bq_table_download(tb,page_size=1000) 
+treat_f <- df[df$variant_id == "on", ]
+control_f <- df[df$variant_id == "off", ]
 t.test(treat_f$event_count, control_f$event_count)
 
 ## gms
-sql <- "select * from `etsy-data-warehouse-all_units_events_browser_level_gms`;"
-
+sql <- "select * from `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level_gms`;"
 tb <- bq_project_query(billing, sql)
-
 df <- bq_table_download(tb,page_size=500) 
-
-treat_f <- df[df$ab_variant == "on", ]
-control_f <- df[df$ab_variant == "off", ]
-
+treat_f <- df[df$variant_id == "on", ]
+control_f <- df[df$variant_id == "off", ]
 t.test(treat_f$event_count, control_f$event_count)
 
 ## offsite ads
-sql <- "select * from `etsy-data-warehouse-all_units_events_browser_level_offsite_ads`;"
-
+sql <- "select * from `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level_offsite_ads`;"
 tb <- bq_project_query(billing, sql)
-
 df <- bq_table_download(tb,page_size=500) 
-
-treat_f <- df[df$ab_variant == "on", ]
-control_f <- df[df$ab_variant == "off", ]
-
+treat_f <- df[df$variant_id == "on", ]
+control_f <- df[df$variant_id == "off", ]
 t.test(treat_f$event_count, control_f$event_count)
 
 ## prolist
-sql <- "select * from `etsy-data-warehouse-all_units_events_browser_level_prolist`;"
-
+sql <- "select * from `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level_prolist`;"
 tb <- bq_project_query(billing, sql)
-
 df <- bq_table_download(tb,page_size=500) 
-
-treat_f <- df[df$ab_variant == "on", ]
-control_f <- df[df$ab_variant == "off", ]
-
+treat_f <- df[df$variant_id == "on", ]
+control_f <- df[df$variant_id == "off", ]
 t.test(treat_f$event_count, control_f$event_count)
 
 ## order value
-sql <- "select * from `etsy-data-warehouse-all_units_events_browser_level_order_value`;"
-
+sql <- "select * from `etsy-data-warehouse-dev.madelinecollins.all_units_events_browser_level_order_value`;"
 tb <- bq_project_query(billing, sql)
-
 df <- bq_table_download(tb,page_size=500) 
-
-treat_f <- df[df$ab_variant == "on", ]
+treat_f <- df[df$variant_id == "on", ]
+control_f <- df[df$variant_id == "off", ]
+t.test(treat_f$event_count, control_f$event_count)
 control_f <- df[df$ab_variant == "off", ]
 
 t.test(treat_f$event_count, control_f$event_count)
