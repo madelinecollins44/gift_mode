@@ -64,27 +64,36 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket
 -- For event filtered experiments, the effective bucketing event for a bucketed unit
 -- into a variant is the FIRST filtering event to occur after that bucketed unit was
 -- bucketed into that variant of the experiment.
-IF is_event_filtered THEN
+-- IF is_event_filtered THEN
     CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket` AS (
         SELECT
             a.bucketing_id,
             a.bucketing_id_type,
             a.variant_id,
-            MIN(f.event_ts) AS bucketing_ts,
+            MIN(timestamp_millis(c.epoch_ms)) AS bucketing_ts,
+            -- MIN(f.event_ts) AS bucketing_ts,
         FROM
             `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket` a
-        JOIN
-            `etsy-data-warehouse-prod.catapult_unified.filtering_event` f
-            USING(bucketing_id)
+        INNER JOIN 
+            'etsy-data-warehouse-prod.weblog.visits' b
+                on b.browser_id=a.bucketing_id
+        INNER JOIN 
+              'etsy-data-warehouse-prod.weblog.events' c
+                on b.visit_id=c.visit_id
+        -- JOIN
+        --     `etsy-data-warehouse-prod.catapult_unified.filtering_event` f
+        --     USING(bucketing_id)
         WHERE
-            f._date BETWEEN start_date AND end_date
-            AND f.experiment_id = config_flag_param
-            AND f.event_ts >= f.boundary_start_ts
-            AND f.event_ts >= a.bucketing_ts
+            ref_tag in ('hp_bubbles_MDAY24')
+            and b._date >= current_date-30
+            and timestamp_millis(epoch_ms) >= a.bucketing_ts-- only look at 
+            -- AND f.experiment_id = config_flag_param
+            -- AND f.event_ts >= f.boundary_start_ts
+            -- AND f.event_ts >= a.bucketing_ts
         GROUP BY
-            bucketing_id, bucketing_id_type, variant_id
+            ALL
     );
-END IF;
+-- END IF;
 
 -------------------------------------------------------------------------------------------
 -- SEGMENT DATA
@@ -302,22 +311,22 @@ END IF;
 -- COMBINE BUCKETING, EVENT & SEGMENT DATA
 -------------------------------------------------------------------------------------------
 -- All events for all bucketed units, with segment values.
-CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket_clicks` AS (
-select 
-  a.bucketing_id,
-  a.variant_id
-from 
-  `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket` a
-inner join 
-  etsy-data-warehouse-prod.weblog.visits b
-    on b.browser_id=a.bucketing_id
-inner join 
-  etsy-data-warehouse-prod.weblog.events c
-    on b.visit_id=c.visit_id
-where 
-  ref_tag in ('hp_bubbles_MDAY24')
-  and b._date >= current_date-30
-);
+-- CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket_clicks` AS (
+-- select 
+--   a.bucketing_id,
+--   a.variant_id
+-- from 
+--   `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket` a
+-- inner join 
+--   etsy-data-warehouse-prod.weblog.visits b
+--     on b.browser_id=a.bucketing_id
+-- inner join 
+--   etsy-data-warehouse-prod.weblog.events c
+--     on b.visit_id=c.visit_id
+-- where 
+--   ref_tag in ('hp_bubbles_MDAY24')
+--   and b._date >= current_date-30
+-- );
 
 CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_events_segments` AS (
     SELECT
@@ -328,7 +337,7 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.all_units_event
         -- buyer_segment,
         -- canonical_region,
     FROM
-        `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket_clicks`
+        `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket`
     CROSS JOIN
         `etsy-data-warehouse-dev.madelinecollins.events`
     LEFT JOIN
