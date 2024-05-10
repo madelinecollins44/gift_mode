@@ -95,28 +95,34 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket
 PERSONA CLICK RATE
 -------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------
---persona click rate with treatment on 
-with variant_on as (
+--click rate from personas
+with agg as (
 select
   a.visit_id
   , a.bucketing_id
+  , a.variant_id
   , b.event_type
   , lead(b.event_type) over (partition by b.visit_id order by b.sequence_number) as next_page
-from `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket`a
-inner join etsy-data-warehouse-prod.weblog.events b using (visit_id)
+from 
+  `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket`a
+inner join 
+  etsy-data-warehouse-prod.weblog.events b 
+    using (visit_id)
 where 
-  variant_id in ('on')
-  and b.page_view=1
+  b.page_view=1
 )
 select
-count(distinct bucketing_id)
-  , count(distinct case when event_type in ('gift_mode_see_all_personas') then bucketing_id end) as browsers_with_see_all
-  , count(distinct case when event_type in ('gift_mode_see_all_personas') and next_page in ('gift_mode_persona') then bucketing_id end) as browsers_persona_view
-from variant_on
-
---persona click rate in control 
-
-  
+count(distinct bucketing_id) as total_browers
+  , count(distinct case when variant_id in ('on') then bucketing_id end) as treament_total_browers
+  , count(distinct case when variant_id in ('off') then bucketing_id end) as control_total_browers
+--treatment
+  , count(distinct case when variant_id in ('on') and event_type in ('gift_mode_see_all_personas') then bucketing_id end) as treatment_browsers_with_see_all
+  , count(distinct case when variant_id in ('on') and event_type in ('gift_mode_see_all_personas') and next_page in ('gift_mode_persona') then bucketing_id end) as treatment_browsers_persona_view
+--control
+    , count(distinct case when variant_id in ('off') and event_type in ('gift_mode_quiz_results') then bucketing_id end) as control_browsers_quiz_results
+  , count(distinct case when variant_id in ('off') and event_type in ('gift_mode_quiz_results') and next_page in ('gift_mode_persona') then bucketing_id end) as control_browsers_persona_view
+from agg
+    
 -------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------
 WHERE SEE ALL PERSONA CLICKS COME FROM 
