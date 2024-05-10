@@ -172,34 +172,46 @@ inner join
 where 
   page_view =1
 )
-
+, events_sub as ( --get events for each bucketing_id post event
 select
 variant_id
-  , count(distinct bucketing_id) as browsers
-  , count(event_type)/count(distinct bucketing_id) as avg_pages_viewed
-    , count(distinct case when event_type like ('gift_mode%') and next_page is null then bucketing_id end)/ count(distinct bucketing_id) as persona_exit_rate
-  , count(distinct case when event_type in ('gift_mode_persona') and next_page is null then bucketing_id end)/ count(distinct bucketing_id) as persona_exit_rate
-  , count(case when event_type like ('gift_mode%') then event_type end)/count(distinct bucketing_id) as avg_gm_pages_viewed
-  , count(case when event_type in ('gift_mode_persona') then event_type end)/count(distinct bucketing_id) as avg_persona_pages_viewed
-from 
-  events
+  , bucketing_id
+  , count(event_type) pages_viewed  
+  , count(case when event_type like ('gift_mode%') and next_page is null then event_type end) as gift_mode_exit
+  , count(case when event_type in ('gift_mode_persona') and next_page is null then event_type end) as gift_mode_persona_exit
+  , count(case when event_type like ('gift_mode%') then event_type end) as gift_mode_pages 
+  , count(case when event_type in ('gift_mode_persona') then event_type end) as persona_pages
+from events 
 where
   variant_id in ('on')
   and sequence_number > (select min(sequence_number) from events where event_type in ('gift_mode_see_all_personas')) --everything after see all
 group by all 
-union all ---------
+union all 
+select
+variant_id
+  , bucketing_id
+  , count(event_type) pages_viewed  
+  , count(case when event_type like ('gift_mode%') and next_page is null then event_type end) as gift_mode_exit
+  , count(case when event_type in ('gift_mode_persona') and next_page is null then event_type end) as gift_mode_persona_exit
+  , count(case when event_type like ('gift_mode%') then event_type end) as gift_mode_pages 
+  , count(case when event_type in ('gift_mode_persona') then event_type end) as persona_pages
+from events 
+where
+  variant_id in ('off')
+  and sequence_number > (select min(sequence_number) from events where event_type in ('gift_mode_quiz_results')) --everything after see all
+group by all 
+)
 select
 variant_id
   , count(distinct bucketing_id) as browsers
-  , count(event_type)/count(distinct bucketing_id) as avg_pages_viewed  
-  , count(distinct case when event_type like ('gift_mode%') and next_page is null then bucketing_id end)/ count(distinct bucketing_id) as persona_exit_rate
-  , count(distinct case when event_type in ('gift_mode_persona') and next_page is null then bucketing_id end)/ count(distinct bucketing_id) as persona_exit_rate
-  , count(case when event_type like ('gift_mode%') then event_type end)/count(distinct bucketing_id) as avg_gm_pages_viewed
-  , count(case when event_type in ('gift_mode_persona') then event_type end)/count(distinct bucketing_id) as avg_persona_pages_viewed
+  , sum(pages_viewed)/count(distinct bucketing_id) as avg_pages_viewed
+  , sum(gift_mode_persona_exit)/ count(distinct bucketing_id) as persona_exit_rate
+  , sum(gift_mode_exit)/ count(distinct bucketing_id) as gm_exit_rate
+  , sum(gift_mode_pages)/count(distinct bucketing_id) as avg_gm_pages_viewed
+  , sum(persona_pages)/count(distinct bucketing_id) as avg_persona_pages_viewed
 from 
-  events
-where
-  variant_id in ('off')
-  and sequence_number > (select min(sequence_number) from events where event_type in ('gift_mode_quiz_results')) -- everything happens after quiz
+  events_sub
 group by all 
+
+ 
 
