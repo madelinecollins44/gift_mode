@@ -129,35 +129,14 @@ from
 inner join 
   etsy-data-warehouse-prod.weblog.events b 
     using (visit_id)
-where variant_id in ('on')
-)
-select
-count(distinct bucketing_id) as total_browers
-, count(distinct case when event_type in ('gift_mode_see_all_personas') then bucking_id end) as browsers_see_all_personas
-, count(distinct case when event_type in ('gift_mode_popular_personas_browse_all_tapped') and next_page in ('gift_mode_see_all_personas') then bucking_id end) as carousel_tap
-, count(distinct case when event_type in ('gift_mode_header_collapsed_browse_all_personas_tapped') and next_page in ('gift_mode_see_all_personas') then bucking_id end) as sticky_button_tap
-from agg
-
-    
---click rate from personas-- specific events
-with agg as (
-select
-  a.visit_id
-  , a.bucketing_id
-  , a.variant_id
-  , b.event_type
-  , lead(b.event_type) over (partition by b.visit_id order by b.sequence_number) as next_page
-from 
-  `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket`a
-inner join 
-  etsy-data-warehouse-prod.weblog.events b 
-    using (visit_id)
 where variant_id in ('on') and event_type in ('gift_mode_see_all_personas','gift_mode_popular_personas_browse_all_tapped','gift_mode_header_collapsed_browse_all_personas_tapped')
 )
 select
 count(distinct bucketing_id) as total_browers
 , count(distinct case when event_type in ('gift_mode_see_all_personas') then bucketing_id end) as browsers_see_all_personas
+, count(distinct case when event_type in ('gift_mode_popular_personas_browse_all_tapped') then bucketing_id end) as carousel_tap_event
 , count(distinct case when event_type in ('gift_mode_popular_personas_browse_all_tapped') and next_page in ('gift_mode_see_all_personas') then bucketing_id end) as carousel_tap
+, count(distinct case when event_type in ('gift_mode_header_collapsed_browse_all_personas_tapped') then bucketing_id end) as sticky_tap_event
 , count(distinct case when event_type in ('gift_mode_header_collapsed_browse_all_personas_tapped') and next_page in ('gift_mode_see_all_personas') then bucketing_id end) as sticky_button_tap
 from agg
     
