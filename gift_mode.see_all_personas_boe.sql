@@ -149,3 +149,79 @@ count(distinct bucketing_id) as total_browers
 , count(distinct case when event_type in ('gift_mode_popular_personas_browse_all_tapped') and next_page in ('gift_mode_see_all_personas') then bucking_id end) as carousel_tap
 , count(distinct case when event_type in ('gift_mode_header_collapsed_browse_all_personas_tapped') and next_page in ('gift_mode_see_all_personas') then bucking_id end) as sticky_button_tap
 from agg
+
+    
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+BROWSER JOURNEY
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+-- get events for browsers 
+with agg as (
+select
+  a.visit_id
+  , a.bucketing_id
+  , a.variant_id
+  , b.event_type
+  , b.sequence_number
+  , lead(b.event_type) over (partition by b.visit_id order by b.sequence_number) as next_page
+from 
+  `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket` a
+inner join 
+  etsy-data-warehouse-prod.weblog.events b 
+    using (visit_id)
+where 
+  page_view =1
+)
+, treatment as (
+select
+  bucketing_id
+  , count(sequence_number) as pages_viewed
+  , count(case when event_type like ('%gift_mode%') then sequence_number end) as gift_mode_pages_viewed
+  , count(case when event_type in ('gift_mode_persona') then sequence_number end) as persona_pages_viewed
+  , count(case when next_page is null then sequence_number end) as pages_views_before_exit 
+  , max(case when event_type like ('%gift_mode%') and next_page is null then 1 else 0 end) as exit_from_gift_mode
+  , max(case when event_type in ('gift_mode_persona') and next_page is null then 1 else 0 end) as exit_from_persona
+from 
+  agg
+where
+  variant_id in ('on')
+  and sequence_number > (select sequence_number from agg where event_type in ('gift_mode_see_all_personas'))
+group by all 
+)
+, control as (
+select
+  bucketing_id
+  , count(sequence_number) as pages_viewed
+  , count(case when event_type in ('gift_mode_persona') then sequence_number end) as persona_pages_viewed
+  , count(case when event_type like ('%gift_mode%') then sequence_number end) as gift_mode_pages_viewed
+  , count(case when next_page is null then sequence_number end) as pages_views_before_exit 
+  , max(case when event_type like ('%gift_mode%') and next_page is null then 1 else 0 end) as exit_from_gift_mode
+  , max(case when event_type in ('gift_mode_persona') and next_page is null then 1 else 0 end) as exit_from_persona
+from 
+  agg
+where
+  variant_id in ('off')
+  and sequence_number > (select sequence_number from agg where event_type in ('gift_mode_quiz_results'))
+group by all 
+)
+select 
+  count(distinct t.bucketing_id) as treatment_browsers
+  , count(distinct c.bucketing_id) as control_browsers
+
+  , avg(t.persona_pages_viewed) as treatment_avg_persona_pg_viewed
+  , avg(c.persona_pages_viewed) as control_avg_persona_pg_viewed
+
+  , avg(t.gift_mode_pages_viewed) as treatment_avg_gift_mode_pages_viewed
+  , avg(c.gift_mode_pages_viewed) as control_avg_gift_mode_pages_viewed
+
+  , sum(t.exit_from_gift_mode)/ count(distinct t.bucketing_id) as treatment_gift_mode_exit_rate
+  , sum(c.exit_from_gift_mode)/ count(distinct c.bucketing_id) as control_gift_mode_exit_rate
+
+  , sum(t.exit_from_persona)/ count(distinct t.bucketing_id) as treatment_persona_exit_rate
+  , sum(c.exit_from_persona)/ count(distinct c.bucketing_id) as control_persona_exit_rate
+from 
+  treatment t
+join 
+  control c
+    using (bucketing_id)
