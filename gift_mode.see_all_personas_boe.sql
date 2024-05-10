@@ -1,7 +1,5 @@
 -------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------
 GET BROWSERS IN EXPERIMENT
--------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------
 DECLARE config_flag_param STRING DEFAULT "gift_mode.see_all_personas_boe";
 DECLARE start_date DATE; -- DEFAULT "2023-08-22";
@@ -44,9 +42,6 @@ ELSE
     );
 END IF;
 
--------------------------------------------------------------------------------------------
--- BUCKETING DATA
--------------------------------------------------------------------------------------------
 -- Get the first bucketing moment for each experimental unit (e.g. browser or user).
 CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket` AS (
     SELECT
@@ -63,12 +58,8 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket
         bucketing_id, bucketing_id_type, variant_id
 );
 
--------------------------------------------------------------------------------------------
--- VISIT IDS TO JOIN WITH EXTERNAL TABLES
--------------------------------------------------------------------------------------------
 -- Need visit ids to join with non-Catapult tables?
 -- No problem! Here are some examples for how to get the visit ids for each experimental unit.
-
 -- All associated IDs in the bucketing visit
 -- IF NOT is_event_filtered THEN
     CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket` AS (
@@ -90,10 +81,9 @@ CREATE OR REPLACE TABLE `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket
             b._date BETWEEN start_date AND end_date
             AND b.experiment_id = config_flag_param
     );
--------------------------------------------------------------------------------------------
+
 -------------------------------------------------------------------------------------------
 PERSONA CLICK RATE
--------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------
 --click rate from personas
 with agg as (
@@ -124,9 +114,7 @@ count(distinct bucketing_id) as total_browers
 from agg
     
 -------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------
 WHERE SEE ALL PERSONA CLICKS COME FROM 
--------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------
 --click rate from personas
 with agg as (
@@ -151,10 +139,30 @@ count(distinct bucketing_id) as total_browers
 from agg
 
     
--------------------------------------------------------------------------------------------
+--click rate from personas-- specific events
+with agg as (
+select
+  a.visit_id
+  , a.bucketing_id
+  , a.variant_id
+  , b.event_type
+  , lead(b.event_type) over (partition by b.visit_id order by b.sequence_number) as next_page
+from 
+  `etsy-data-warehouse-dev.madelinecollins.ab_first_bucket`a
+inner join 
+  etsy-data-warehouse-prod.weblog.events b 
+    using (visit_id)
+where variant_id in ('on') and event_type in ('gift_mode_see_all_personas','gift_mode_popular_personas_browse_all_tapped','gift_mode_header_collapsed_browse_all_personas_tapped')
+)
+select
+count(distinct bucketing_id) as total_browers
+, count(distinct case when event_type in ('gift_mode_see_all_personas') then bucketing_id end) as browsers_see_all_personas
+, count(distinct case when event_type in ('gift_mode_popular_personas_browse_all_tapped') and next_page in ('gift_mode_see_all_personas') then bucketing_id end) as carousel_tap
+, count(distinct case when event_type in ('gift_mode_header_collapsed_browse_all_personas_tapped') and next_page in ('gift_mode_see_all_personas') then bucketing_id end) as sticky_button_tap
+from agg
+    
 -------------------------------------------------------------------------------------------
 BROWSER JOURNEY
--------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------
 with events as (
 select
