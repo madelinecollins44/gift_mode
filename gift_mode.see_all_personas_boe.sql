@@ -156,8 +156,9 @@ from agg
 BROWSER JOURNEY
 -------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------
--- get events for browsers 
-with agg as (
+begin 
+
+create or replace temporary table events as (
 select
   a.visit_id
   , a.bucketing_id
@@ -172,10 +173,12 @@ inner join
     using (visit_id)
 where 
   page_view =1
-)
-, treatment as (
+);
+
+create or replace temporary table agg as (
 select
-  bucketing_id
+variant_id
+  , bucketing_id
   , count(sequence_number) as pages_viewed
   , count(case when event_type like ('%gift_mode%') then sequence_number end) as gift_mode_pages_viewed
   , count(case when event_type in ('gift_mode_persona') then sequence_number end) as persona_pages_viewed
@@ -183,15 +186,15 @@ select
   , max(case when event_type like ('%gift_mode%') and next_page is null then 1 else 0 end) as exit_from_gift_mode
   , max(case when event_type in ('gift_mode_persona') and next_page is null then 1 else 0 end) as exit_from_persona
 from 
-  agg
+  events
 where
   variant_id in ('on')
-  and sequence_number > (select sequence_number from agg where event_type in ('gift_mode_see_all_personas'))
+  and sequence_number > (select min(sequence_number) from agg where event_type in ('gift_mode_see_all_personas')) --everything after see all
 group by all 
-)
-, control as (
+union all ---------
 select
-  bucketing_id
+variant_id
+  , bucketing_id
   , count(sequence_number) as pages_viewed
   , count(case when event_type in ('gift_mode_persona') then sequence_number end) as persona_pages_viewed
   , count(case when event_type like ('%gift_mode%') then sequence_number end) as gift_mode_pages_viewed
@@ -199,29 +202,31 @@ select
   , max(case when event_type like ('%gift_mode%') and next_page is null then 1 else 0 end) as exit_from_gift_mode
   , max(case when event_type in ('gift_mode_persona') and next_page is null then 1 else 0 end) as exit_from_persona
 from 
-  agg
+  events
 where
   variant_id in ('off')
-  and sequence_number > (select sequence_number from agg where event_type in ('gift_mode_quiz_results'))
+  and sequence_number > (select min(sequence_number) from agg where event_type in ('gift_mode_quiz_results')) -- everything happens after quiz
 group by all 
-)
+);
+
+create or replace temporary table final as (
 select 
-  count(distinct t.bucketing_id) as treatment_browsers
-  , count(distinct c.bucketing_id) as control_browsers
+  count(distinct case when variant_id in ('on') then bucketing_id end) as treatment_browsers
+  , count(distinct case when variant_id in ('off') then bucketing_id end) as control_browsers
 
-  , avg(t.persona_pages_viewed) as treatment_avg_persona_pg_viewed
-  , avg(c.persona_pages_viewed) as control_avg_persona_pg_viewed
+  , avg(case when variant_id in ('on') then persona_pages_viewed end) as treatment_avg_persona_pg_viewed
+  , avg(case when variant_id in ('off') then persona_pages_viewed end) as control_avg_persona_pg_viewed
 
-  , avg(t.gift_mode_pages_viewed) as treatment_avg_gift_mode_pages_viewed
-  , avg(c.gift_mode_pages_viewed) as control_avg_gift_mode_pages_viewed
+  , avg(case when variant_id in ('on') then gift_mode_pages_viewed end) as treatment_avg_gift_mode_pages_viewed
+  , avg(case when variant_id in ('off') then gift_mode_pages_viewed end) as control_avg_gift_mode_pages_viewed
 
-  , sum(t.exit_from_gift_mode)/ count(distinct t.bucketing_id) as treatment_gift_mode_exit_rate
-  , sum(c.exit_from_gift_mode)/ count(distinct c.bucketing_id) as control_gift_mode_exit_rate
+  , sum(case when variant_id in ('on') then exit_from_gift_mode end)/ count(distinct case when variant_id in ('on') then bucketing_id end) as treatment_gift_mode_exit_rate
+  , sum(case when variant_id in ('off') then exit_from_gift_mode end)/ count(distinct case when variant_id in ('off') then bucketing_id end) as control_gift_mode_exit_rate
 
-  , sum(t.exit_from_persona)/ count(distinct t.bucketing_id) as treatment_persona_exit_rate
-  , sum(c.exit_from_persona)/ count(distinct c.bucketing_id) as control_persona_exit_rate
+  , sum(case when variant_id in ('on') then exit_from_persona end)/ count(distinct case when variant_id in ('on') then bucketing_id end) as treatment_persona_exit_rate
+  , sum(case when variant_id in ('off') then exit_from_persona end)/ count(distinct case when variant_id in ('off') then bucketing_id end) as control_persona_exit_rate
 from 
-  treatment t
-join 
-  control c
-    using (bucketing_id)
+  agg 
+);
+
+end
