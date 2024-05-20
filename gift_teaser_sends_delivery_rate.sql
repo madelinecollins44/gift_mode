@@ -23,7 +23,7 @@ set last_date = (select max(email_sent_date) from `etsy-data-warehouse-dev.rollu
 if last_date is null then set last_date = (select min(date(timestamp_seconds(email_sent_date))) from `etsy-data-warehouse-prod.etsy_shard.gift_receipt_options`);
 end if;
 
--- set last_date = current_date - 1;
+-- set current_date-10 = current_date - 1;
 
 create or replace temporary table agg as (
 with gift_teasers as (
@@ -41,11 +41,10 @@ where
 	and date(timestamp_seconds(create_date)) < current_date -- create before current_date
 	and email_send_schedule_option != 2
 	and gifting_token is not null
-	-- and email_sent_date is not null -- removing this bc sent date can be null if havent been sent yet 
+	and email_sent_date is not null -- has been sent 
 	and delete_date is null
 	and recipient_email > ""
-	and (email_scheduled_send_date is null or date(timestamp_seconds(email_scheduled_send_date)) > last_date) -- tuns first time, every email send before last_date
-	-- and (email_scheduled_send_date is null or date(timestamp_seconds(email_scheduled_send_date)) > last_date) -- this after first time it runs, pulls in every send after last_date, aka most recent day 
+	and (date(timestamp_seconds(email_scheduled_send_date))) > last_date 
 )
 select distinct
 	a.*
