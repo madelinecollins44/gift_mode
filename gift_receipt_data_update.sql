@@ -1,6 +1,7 @@
 --------------------------------------------------------------------------------------------------------------------------------------------------------
 I TOOK THE OLD RECEIPT DATA ROLL UP AND ADDED IN: VIDEO, AUDIO, CONTENT FLAG, SHARED GT
 --------------------------------------------------------------------------------------------------------------------------------------------------------
+
 -- owner: awaagner@etsy.com
 -- owner_team: product-asf@etsy.com
 -- description: tracking receipt email info between gift purchases
@@ -44,8 +45,6 @@ where
   and gr.delete_date is null
   and gr.gifting_token is not null
 )
-select count(distinct receipt_id), count(distinct case when media_id is not null then receipt_id end) from gifting_receipts
-
 , all_gift_receipt_data as (
 select
   a.* 
@@ -107,6 +106,8 @@ select
   , case when buyer_email = recipient_email then 1 else 0 end as sent_to_self
   , a.create_page_source
   , a.is_guest_checkout
+  , a.media_id
+  , a.moderation_flag
   , case when a.thank_you_note is not null then 1 else 0 end as thank_you_note_sent
   , coalesce(count(distinct a.receipt_id),0) as n_orders
   , coalesce(sum(n_transactions),0) as n_transactions
@@ -129,12 +130,12 @@ from
   all_gift_receipt_data a 
 left join 
   receipt_info b 
-using(receipt_id)
+    using(receipt_id)
 left join 
   visit_data v 
 on 
   a.receipt_id = v.receipt_id
-group by 1,2,3,4,5,6,7,8
+group by all
 )
 ;
 
