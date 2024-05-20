@@ -12,10 +12,10 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_ra
   , bounced_gift_teasers int64
   , opened_gift_teasers int64
   , clicked_gift_teasers int64
-  , delivered_rate float64
-  , bounced_rate float64
-  , opened_rate float64
-  , clicked_rate float64
+  -- , delivered_rate float64
+  -- , bounced_rate float64
+  -- , opened_rate float64
+  -- , clicked_rate float64
 );
 
 -- in case of day 1, backfill for 30 days
@@ -23,7 +23,7 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_ra
 -- if last_date is null then set last_date = (select min(date(timestamp_seconds(create_date)))-1 from `etsy-data-warehouse-prod.etsy_shard.gift_receipt_options`);
 -- end if;
 
-set last_date = current_date;
+set last_date = current_date - 1;
 
 create or replace temporary table agg as (
 with gift_teasers as (
@@ -87,10 +87,10 @@ select
   , count(distinct case when bounced is not null then receipt_id end) as bounced_gift_teasers
   , count(distinct case when opened is not null then receipt_id end) as opened_gift_teasers
   , count(distinct case when clicked is not null then receipt_id end) as clicked_gift_teasers
-  , count(distinct case when delivered is not null then receipt_id end)/count(distinct receipt_id) as delivered_rate
-  , count(distinct case when bounced is not null then receipt_id end)/count(distinct receipt_id) as bounced_rate
-  , count(distinct case when delivered is not null then receipt_id end)/count(distinct receipt_id) as opened_rate
-  , count(distinct case when clicked is not null then receipt_id end)/count(distinct receipt_id) as clicked_rate
+  -- , count(distinct case when delivered is not null then receipt_id end)/count(distinct receipt_id) as delivered_rate
+  -- , count(distinct case when bounced is not null then receipt_id end)/count(distinct receipt_id) as bounced_rate
+  -- , count(distinct case when delivered is not null then receipt_id end)/count(distinct receipt_id) as opened_rate
+  -- , count(distinct case when clicked is not null then receipt_id end)/count(distinct receipt_id) as clicked_rate
 from 
   agg
 group by all
