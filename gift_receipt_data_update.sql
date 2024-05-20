@@ -8,7 +8,7 @@ I TOOK THE OLD RECEIPT DATA ROLL UP AND ADDED IN: VIDEO, AUDIO, CONTENT FLAG, SH
 
 BEGIN 
 
--- create a table with info about the gift receipts, including info on whether they"ve been visited
+-- create a table with info about the gift receipts, including info on whether they've been visited
 
 create or replace table `etsy-data-warehouse-dev.rollups.gift_receipt_data` as ( 
 with gifting_receipts as (
@@ -29,6 +29,7 @@ select
   , gr.thank_you_note
   , med.media_id -- video=0, audio=1 
   , case when flag.gift_receipt_options_id is not null then 1 else 0 end as moderation_flag
+  -- , flag.reason
 from
   `etsy-data-warehouse-prod.etsy_shard.gift_receipt_options` gr
 left join 
@@ -37,6 +38,7 @@ left join
 left join 
     (select 
         JSON_VALUE(reason, "$.gift_receipt_options_id") as gift_receipt_options_id 
+        -- , JSON_VALUE(reason, "$.reason") as reason 
       from `etsy-data-warehouse-prod.etsy_aux.flag` 
         where flag_type_id = 1262867763708)  flag
     on gr.gift_receipt_options_id=cast(flag.gift_receipt_options_id as int64)
