@@ -45,7 +45,9 @@ where
 	and email_sent_date is not null
 	and delete_date is null
 	and recipient_email > ""
-	and (email_scheduled_send_date is null or date(timestamp_seconds(email_scheduled_send_date)) < last_date) -- send dates that are null or have been sent before last_date
+	and (email_scheduled_send_date is null or date(timestamp_seconds(email_scheduled_send_date)) > last_date) -- tuns first time, every email send before last_date
+	-- and (email_scheduled_send_date is null or date(timestamp_seconds(email_scheduled_send_date)) > last_date) -- this after first time it runs, pulls in every send after last_date, aka most recent day 
+
 )
 select 
 	a.*
@@ -63,20 +65,23 @@ on
 	and date(timestamp_seconds(b.send_date)) >= last_date
 left join 
 	`etsy-data-warehouse-prod.mail_mart.bounces` c
-on 
-	a.recipient_email = lower(c.email_address) 
-	and c.campaign_label like "recipient_%"
-	and date(timestamp_seconds(c.send_date)) >= last_date
+	on 
+		a.recipient_email = lower(c.email_address) 
+		and c.campaign_label like "recipient_%"
+		and date(timestamp_seconds(c.send_date)) >= last_date
+		and c.euid=b.euid
 left join 
   etsy-data-warehouse-prod.mail_mart.opens d
     on a.recipient_email = lower(d.email_address) 
 	  and d.campaign_label like "recipient_%"
 	  and date(timestamp_seconds(d.send_date)) >= last_date
+		and d.euid=b.euid
 left join 
   etsy-data-warehouse-prod.mail_mart.clicks e
     on a.recipient_email = lower(e.email_address) 
 	  and e.campaign_label like "recipient_%"
 	  and date(timestamp_seconds(e.send_date)) >= last_date
+		and e.euid=b.euid
 );
 
 insert into `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
