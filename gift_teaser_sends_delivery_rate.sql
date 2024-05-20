@@ -6,7 +6,7 @@ drop table if exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates`;
 
 create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
  email_sent_date DATE
- , create_page_source int64
+--  , create_page_source int64
   , gift_teasers int64
   , delivered_gift_teasers int64
   , bounced_gift_teasers int64
@@ -37,19 +37,17 @@ select
 from 
 	`etsy-data-warehouse-prod.etsy_shard.gift_receipt_options`
 where 
-	-- date(timestamp_seconds(create_date)) >= current_date-90 --all gift teasers created in 90 days 
 	date(timestamp_seconds(create_date)) >= current_date-90 --all gift teasers created in 90 days 
 	and date(timestamp_seconds(create_date)) < current_date -- create before current_date
 	and email_send_schedule_option != 2
 	and gifting_token is not null
-	and email_sent_date is not null
+	-- and email_sent_date is not null -- removing this bc sent date can be null if havent been sent yet 
 	and delete_date is null
 	and recipient_email > ""
 	and (email_scheduled_send_date is null or date(timestamp_seconds(email_scheduled_send_date)) > last_date) -- tuns first time, every email send before last_date
 	-- and (email_scheduled_send_date is null or date(timestamp_seconds(email_scheduled_send_date)) > last_date) -- this after first time it runs, pulls in every send after last_date, aka most recent day 
-
 )
-select 
+select distinct
 	a.*
 	, b.euid as delivered
   , c.euid as bounced
@@ -69,7 +67,6 @@ left join
 		a.recipient_email = lower(c.email_address) 
 		and c.campaign_label like "recipient_%"
 		and date(timestamp_seconds(c.send_date)) >= last_date
-		and c.euid=b.euid
 left join 
   etsy-data-warehouse-prod.mail_mart.opens d
     on a.recipient_email = lower(d.email_address) 
@@ -81,13 +78,12 @@ left join
     on a.recipient_email = lower(e.email_address) 
 	  and e.campaign_label like "recipient_%"
 	  and date(timestamp_seconds(e.send_date)) >= last_date
-		and e.euid=b.euid
+		and e.euid=d.euid -- is this right-- only opened emails can be clicked?
 );
 
 insert into `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
 select
   email_sent_date
-  , create_page_source
   , count(distinct receipt_id) as gift_teasers
   , count(distinct case when delivered is not null then receipt_id end) as delivered_gift_teasers
   , count(distinct case when bounced is not null then receipt_id end) as bounced_gift_teasers
