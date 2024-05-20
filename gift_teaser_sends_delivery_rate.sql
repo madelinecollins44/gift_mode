@@ -6,7 +6,7 @@ declare last_date date;
 
 create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
  email_sent_date DATE
---  , create_page_source int64
+ , create_page_source int64
   , gift_teasers int64
   , delivered_gift_teasers int64
   , bounced_gift_teasers int64
@@ -83,6 +83,7 @@ left join
 insert into `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
 select
   email_sent_date
+  , create_page_source
   , count(distinct receipt_id) as gift_teasers
   , count(distinct case when delivered is not null then receipt_id end) as delivered_gift_teasers
   , count(distinct case when bounced is not null then receipt_id end) as bounced_gift_teasers
