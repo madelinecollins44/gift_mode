@@ -2,7 +2,7 @@ BEGIN
 
 declare last_date date;
 
--- drop table if exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates`;
+drop table if exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates`;
 
 create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
  email_sent_date DATE
@@ -12,6 +12,7 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_ra
   , bounced_gift_teasers int64
   , opened_gift_teasers int64
   , clicked_gift_teasers int64
+  , visited_gift_teasers int64
   -- , delivered_rate float64
   -- , bounced_rate float64
   -- , opened_rate float64
@@ -46,12 +47,23 @@ where
 	and recipient_email > ""
 	and (date(timestamp_seconds(email_scheduled_send_date))) > last_date 
 )
+, visits as (
+select distinct
+  date(_partitiontime) as _date 
+  , (select value from unnest(beacon.properties.key_value) where key in ('receipt_id')) as receipt_id
+from 
+  `etsy-visit-pipe-prod.canonical.visit_id_beacons`  
+where 
+  date(_partitiontime) >= current_date-90
+  and beacon.event_name in ('giftreceipt_view', 'gift_recipientview_boe_view')
+)
 select distinct
 	a.*
 	, b.euid as delivered
   , c.euid as bounced
   , d.euid as opened
   , e.euid as clicked
+	, case when f.receipt_id is not null then f.receipt_id end as visited 
 from
 	gift_teasers a 
 left join 
@@ -78,17 +90,21 @@ left join
 	  and e.campaign_label like "recipient_%"
 	  and date(timestamp_seconds(e.send_date)) >= last_date
 		and e.euid=d.euid -- is this right-- only opened emails can be clicked?
+left join 
+	visits f
+		on a.receipt_id=cast(f.receipt_id as int64)
 );
 
 insert into `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
 select
   email_sent_date
-  , create_page_source
+	, create_page_source
   , count(distinct receipt_id) as gift_teasers
   , count(distinct case when delivered is not null then receipt_id end) as delivered_gift_teasers
   , count(distinct case when bounced is not null then receipt_id end) as bounced_gift_teasers
   , count(distinct case when opened is not null then receipt_id end) as opened_gift_teasers
   , count(distinct case when clicked is not null then receipt_id end) as clicked_gift_teasers
+	, count(distinct case when visited is not null then receipt_id end) as visited_gift_teasers
   -- , count(distinct case when delivered is not null then receipt_id end)/count(distinct receipt_id) as delivered_rate
   -- , count(distinct case when bounced is not null then receipt_id end)/count(distinct receipt_id) as bounced_rate
   -- , count(distinct case when delivered is not null then receipt_id end)/count(distinct receipt_id) as opened_rate
