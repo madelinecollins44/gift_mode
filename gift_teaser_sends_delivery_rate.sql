@@ -2,7 +2,7 @@ BEGIN
 
 declare last_date date;
 
-drop table if exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates`;
+-- drop table if exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates`;
 
 create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
  email_sent_date DATE
