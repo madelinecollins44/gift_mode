@@ -2,9 +2,9 @@ BEGIN
 
 declare last_date date;
 
-drop table if exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates`;
+-- drop table if exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_metrics`;
 
-create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
+create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_metrics` (
  email_sent_date DATE
  , create_page_source int64
   , gift_teasers int64
@@ -19,7 +19,7 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_ra
 );
 
 -- in case of day 1, backfill for 30 days
--- set last_date = (select max(_date) from `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates`);
+-- set last_date = (select max(_date) from `etsy-data-warehouse-dev.rollups.gift_teaser_email_metrics`);
 -- if last_date is null then set last_date = (select min(_date)-1 from `etsy-data-warehouse-prod.etsy_shard.gift_receipt_options`);
 -- end if;
 
@@ -78,7 +78,7 @@ left join
 	  and date(timestamp_seconds(e.send_date)) >= last_date
 );
 
-insert into `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
+insert into `etsy-data-warehouse-dev.rollups.gift_teaser_email_metrics` (
 select
   email_sent_date
   , create_page_source
