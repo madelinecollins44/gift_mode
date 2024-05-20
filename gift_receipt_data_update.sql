@@ -29,7 +29,7 @@ select
   , gr.thank_you_note
   , med.media_type -- video=0, audio=1 
   , case when flag.gift_receipt_options_id is not null then 1 else 0 end as moderation_flag
-  -- , flag.reason
+  , flag.reason
 from
   `etsy-data-warehouse-prod.etsy_shard.gift_receipt_options` gr
 left join 
@@ -38,7 +38,7 @@ left join
 left join 
     (select 
         JSON_VALUE(reason, "$.gift_receipt_options_id") as gift_receipt_options_id 
-        -- , JSON_VALUE(reason, "$.reason") as reason 
+        , JSON_VALUE(reason, "$.reason") as reason 
       from `etsy-data-warehouse-prod.etsy_aux.flag` 
         where flag_type_id = 1262867763708)  flag
     on gr.gift_receipt_options_id=cast(flag.gift_receipt_options_id as int64)
