@@ -2,9 +2,9 @@ BEGIN
 
 declare last_date date;
 
--- drop table if exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_metrics`;
+-- drop table if exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates`;
 
-create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_metrics` (
+create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
  email_sent_date DATE
  , create_page_source int64
   , gift_teasers int64
@@ -19,11 +19,11 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_me
 );
 
 -- in case of day 1, backfill for 30 days
--- set last_date = (select max(_date) from `etsy-data-warehouse-dev.rollups.gift_teaser_email_metrics`);
--- if last_date is null then set last_date = (select min(_date)-1 from `etsy-data-warehouse-prod.etsy_shard.gift_receipt_options`);
+-- set last_date = (select max(email_sent_date) from `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates`);
+-- if last_date is null then set last_date = (select min(date(timestamp_seconds(create_date)))-1 from `etsy-data-warehouse-prod.etsy_shard.gift_receipt_options`);
 -- end if;
 
-set last_date = current_date - 5;
+set last_date = current_date;
 
 create or replace temporary table agg as (
 with gift_teasers as (
@@ -37,8 +37,8 @@ select
 from 
 	`etsy-data-warehouse-prod.etsy_shard.gift_receipt_options`
 where 
-	date(timestamp_seconds(create_date)) >= last_date
-	and date(timestamp_seconds(create_date)) < last_date
+	date(timestamp_seconds(create_date)) >= current_date-90 --all gift teasers created in 90 days 
+	and date(timestamp_seconds(create_date)) < last_date -- create before current_date
 	and email_send_schedule_option != 2
 	and gifting_token is not null
 	and email_sent_date is not null
@@ -78,7 +78,7 @@ left join
 	  and date(timestamp_seconds(e.send_date)) >= last_date
 );
 
-insert into `etsy-data-warehouse-dev.rollups.gift_teaser_email_metrics` (
+insert into `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
 select
   email_sent_date
   , create_page_source
