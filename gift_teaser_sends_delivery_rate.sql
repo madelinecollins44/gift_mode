@@ -45,7 +45,7 @@ where
 	and email_sent_date is not null
 	and delete_date is null
 	and recipient_email > ""
-	and (email_scheduled_send_date is null or date(timestamp_seconds(email_scheduled_send_date)) < last_date) -- send dates that are null or have been sent 
+	and (email_scheduled_send_date is null or date(timestamp_seconds(email_scheduled_send_date)) < last_date) -- send dates that are null or have been sent before last_date
 )
 select 
 	a.*
