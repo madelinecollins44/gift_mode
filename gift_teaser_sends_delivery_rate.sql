@@ -71,6 +71,7 @@ left join
 on 
 	a.recipient_email = lower(b.email_address) 
 	and b.campaign_label like "recipient_%"
+	and a.email_sent_date = date(timestamp_seconds(b.send_date))
 	and date(timestamp_seconds(b.send_date)) >= last_date
 left join 
 	`etsy-data-warehouse-prod.mail_mart.bounces` c
@@ -98,13 +99,13 @@ left join
 insert into `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
 select
   email_sent_date
-	, create_page_source
+  , create_page_source
   , count(distinct receipt_id) as gift_teasers
   , count(distinct case when delivered is not null then receipt_id end) as delivered_gift_teasers
   , count(distinct case when bounced is not null then receipt_id end) as bounced_gift_teasers
   , count(distinct case when opened is not null then receipt_id end) as opened_gift_teasers
   , count(distinct case when clicked is not null then receipt_id end) as clicked_gift_teasers
-	, count(distinct case when visited is not null then receipt_id end) as visited_gift_teasers
+  , count(distinct case when visited is not null then receipt_id end) as visited_gift_teasers
   -- , count(distinct case when delivered is not null then receipt_id end)/count(distinct receipt_id) as delivered_rate
   -- , count(distinct case when bounced is not null then receipt_id end)/count(distinct receipt_id) as bounced_rate
   -- , count(distinct case when delivered is not null then receipt_id end)/count(distinct receipt_id) as opened_rate
