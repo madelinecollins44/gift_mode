@@ -54,8 +54,8 @@ inner join
     using (visit_id)
 where 
   date(a._partitiontime) >= current_date-90
-  and beacon.event_name in ('giftreceipt_view', 'gift_recipientview_boe_view')
-  and b.top_channel like ('%email%')
+  and beacon.event_name in ('giftreceipt_view'), 'gift_recipientview_boe_view') -- does gift_recipientview_boe_view fire for all gift teaser views on boe?
+  and b.top_channel in ('email_transactional')
   and b._date >= current_date-90
 )
 select distinct
