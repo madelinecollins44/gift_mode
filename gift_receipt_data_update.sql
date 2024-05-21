@@ -1,7 +1,6 @@
 --------------------------------------------------------------------------------------------------------------------------------------------------------
 I TOOK THE OLD RECEIPT DATA ROLL UP AND ADDED IN: VIDEO, AUDIO, CONTENT FLAG, SHARED GT
 --------------------------------------------------------------------------------------------------------------------------------------------------------
-
 -- owner: awaagner@etsy.com
 -- owner_team: product-asf@etsy.com
 -- description: tracking receipt email info between gift purchases
@@ -108,7 +107,7 @@ select
   , case when buyer_email = recipient_email then 1 else 0 end as sent_to_self
   , a.create_page_source
   , a.is_guest_checkout
-  , a.media_id
+  , a.media_type
   , a.moderation_flag
   , case when a.thank_you_note is not null then 1 else 0 end as thank_you_note_sent
   , coalesce(count(distinct a.receipt_id),0) as n_orders
