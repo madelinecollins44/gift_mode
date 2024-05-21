@@ -1,14 +1,13 @@
 --------------------------------------------------------------------------------------------------------------------------------------------------------
-I TOOK THE OLD RECEIPT DATA ROLL UP AND ADDED IN: VIDEO, AUDIO, CONTENT FLAG, SHARED GT
+-- I TOOK THE OLD RECEIPT DATA ROLL UP AND ADDED IN: VIDEO, AUDIO, CONTENT FLAG, SHARED GT
 --------------------------------------------------------------------------------------------------------------------------------------------------------
 -- owner: awaagner@etsy.com
 -- owner_team: product-asf@etsy.com
 -- description: tracking receipt email info between gift purchases
-
+  
 BEGIN 
 
 -- create a table with info about the gift receipts, including info on whether they"ve been visited
-
 create or replace table `etsy-data-warehouse-dev.rollups.gift_receipt_data` as ( 
 with gifting_receipts as (
 select
@@ -26,8 +25,8 @@ select
   , gr.cart_id
   , gr.create_page_source
   , gr.thank_you_note
-  , med.media_type -- video=0, audio=1 
-  , case when flag.gift_receipt_options_id is not null then 1 else 0 end as moderation_flag
+  , cast(med.media_type as string) as media_type-- video=0, audio=1 
+  , case when flag.gift_receipt_options_id is not null then '1' else '0' end as moderation_flag
   , flag.reason
 from
   `etsy-data-warehouse-prod.etsy_shard.gift_receipt_options` gr
@@ -35,12 +34,14 @@ left join
   (select gift_receipt_options_id, media_type from etsy-data-warehouse-prod.etsy_shard.gift_receipt_media where state != 2) med
     using (gift_receipt_options_id)
 left join 
-    (select 
-        JSON_VALUE(reason, "$.gift_receipt_options_id") as gift_receipt_options_id 
-        , JSON_VALUE(reason, "$.reason") as reason 
-      from `etsy-data-warehouse-prod.etsy_aux.flag` 
-        where flag_type_id = 1262867763708)  flag
-    on gr.gift_receipt_options_id=cast(flag.gift_receipt_options_id as int64)
+  (select   
+    JSON_VALUE(reason, "$.reason") as reason 
+    , JSON_VALUE(reason, "$.gift_receipt_options_id") as gift_receipt_options_id 
+  from `etsy-data-warehouse-prod.etsy_aux.flag` 
+    where flag_type_id = 1262867763708
+    and (user_id not in (474509404, 483963146, 315096955, 56578860, 260578851, 146845291, 56575154)) -- excludes engineers that were testing
+    ) flag
+  on gr.gift_receipt_options_id=cast(flag.gift_receipt_options_id as int64)
 where
   gr.receipt_id is not null
   and gr.delete_date is null
@@ -56,10 +57,12 @@ select
   , ar.is_guest_checkout
 from 
   gifting_receipts a
-left join `etsy-data-warehouse-prod.transaction_mart.all_receipts` ar using (receipt_id)
+left join 
+  `etsy-data-warehouse-prod.transaction_mart.all_receipts` ar 
+    using (receipt_id)
 left join 
   `etsy-data-warehouse-prod`.user_mart.mapped_user_profile up 
-on ar.buyer_user_id = up.mapped_user_id
+    on ar.buyer_user_id = up.mapped_user_id
 left join 
   `etsy-data-warehouse-prod`.user_mart.mapped_user_profile upd 
 on 
@@ -85,7 +88,8 @@ inner join
 on 
   a.receipt_id=b.receipt_id
 group by 1,2
-), visit_data as (
+)
+, visit_data as (
 select 
   a.receipt_id
   , count(distinct visit_id) as total_visits
