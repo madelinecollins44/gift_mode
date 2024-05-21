@@ -25,7 +25,7 @@ select
   , gr.cart_id
   , gr.create_page_source
   , gr.thank_you_note
-  , cast(med.media_type as string) as media_type-- video=0, audio=1 
+  , med.media_type -- video=0, audio=1 
   , case when flag.gift_receipt_options_id is not null then '1' else '0' end as moderation_flag
   , flag.reason
 from
@@ -59,7 +59,8 @@ from
   gifting_receipts a
 left join 
   `etsy-data-warehouse-prod.transaction_mart.all_receipts` ar 
-    using (receipt_id)
+    on a.receipt_id=ar.receipt_id
+    -- and (timestamp_seconds(ar.creation_tsz)) >= min(a.create_date)
 left join 
   `etsy-data-warehouse-prod`.user_mart.mapped_user_profile up 
     on ar.buyer_user_id = up.mapped_user_id
