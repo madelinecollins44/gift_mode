@@ -78,17 +78,20 @@ left join
 	on 
 		a.recipient_email = lower(c.email_address) 
 		and c.campaign_label like "recipient_%"
+    and a.email_sent_date = date(timestamp_seconds(c.send_date))
 		and date(timestamp_seconds(c.send_date)) >= last_date
 left join 
   etsy-data-warehouse-prod.mail_mart.opens d
     on a.recipient_email = lower(d.email_address) 
 	  and d.campaign_label like "recipient_%"
+    and a.email_sent_date = date(timestamp_seconds(d.send_date))
 	  and date(timestamp_seconds(d.send_date)) >= last_date
 		and d.euid=b.euid
 left join 
   etsy-data-warehouse-prod.mail_mart.clicks e
     on a.recipient_email = lower(e.email_address) 
 	  and e.campaign_label like "recipient_%"
+    and a.email_sent_date = date(timestamp_seconds(e.send_date))
 	  and date(timestamp_seconds(e.send_date)) >= last_date
 		and e.euid=d.euid -- is this right-- only opened emails can be clicked?
 left join 
