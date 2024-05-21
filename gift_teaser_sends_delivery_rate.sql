@@ -48,10 +48,15 @@ select distinct
   date(_partitiontime) as _date 
   , (select value from unnest(beacon.properties.key_value) where key in ('receipt_id')) as receipt_id
 from 
-  `etsy-visit-pipe-prod.canonical.visit_id_beacons`  
+  `etsy-visit-pipe-prod.canonical.visit_id_beacons`  a
+inner join 
+  etsy-data-warehouse-prod.weblog.visits b 
+    using (visit_id)
 where 
-  date(_partitiontime) >= current_date-90
+  date(a._partitiontime) >= current_date-90
   and beacon.event_name in ('giftreceipt_view', 'gift_recipientview_boe_view')
+  and b.top_channel like ('%email%')
+  and b._date >= current_date-90
 )
 select distinct
 	a.*
