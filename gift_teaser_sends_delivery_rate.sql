@@ -13,10 +13,6 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_teaser_email_ra
   , opened_gift_teasers int64
   , clicked_gift_teasers int64
   , visited_gift_teasers int64
-  -- , delivered_rate float64
-  -- , bounced_rate float64
-  -- , opened_rate float64
-  -- , clicked_rate float64
 );
 
 -- in case of day 1, backfill for 30 days
@@ -63,7 +59,7 @@ select distinct
   , c.euid as bounced
   , d.euid as opened
   , e.euid as clicked
-	, case when f.receipt_id is not null then f.receipt_id end as visited 
+	, case when f.receipt_id is not null then 1 else 0 end as visited -- if receipt is visited, then 1 
 from
 	gift_teasers a 
 left join 
@@ -97,6 +93,7 @@ left join
 left join 
 	visits f
 		on a.receipt_id=cast(f.receipt_id as int64)
+group by all
 );
 
 insert into `etsy-data-warehouse-dev.rollups.gift_teaser_email_rates` (
@@ -104,15 +101,11 @@ select
   email_sent_date
   , create_page_source
   , count(distinct receipt_id) as gift_teasers
-  , count(distinct case when delivered is not null then receipt_id end) as delivered_gift_teasers
-  , count(distinct case when bounced is not null then receipt_id end) as bounced_gift_teasers
-  , count(distinct case when opened is not null then receipt_id end) as opened_gift_teasers
-  , count(distinct case when clicked is not null then receipt_id end) as clicked_gift_teasers
-  , count(distinct case when visited is not null then receipt_id end) as visited_gift_teasers
-  -- , count(distinct case when delivered is not null then receipt_id end)/count(distinct receipt_id) as delivered_rate
-  -- , count(distinct case when bounced is not null then receipt_id end)/count(distinct receipt_id) as bounced_rate
-  -- , count(distinct case when delivered is not null then receipt_id end)/count(distinct receipt_id) as opened_rate
-  -- , count(distinct case when clicked is not null then receipt_id end)/count(distinct receipt_id) as clicked_rate
+  , count(distinct delivered) as delivered_gift_teasers
+  , count(distinct bounced) as bounced_gift_teasers
+  , count(distinct opened) as opened_gift_teasers
+  , count(distinct clicked) as clicked_gift_teasers
+  , count(distinct case when visited > 0 then receipt_id end) as visited_gift_teasers
 from 
   agg
 group by all
