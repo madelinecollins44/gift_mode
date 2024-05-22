@@ -44,28 +44,31 @@ where
 	and (date(timestamp_seconds(email_scheduled_send_date))) > last_date 
 )
 , visits as (
-select distinct
-  date(_partitiontime) as _date 
-  , (select value from unnest(beacon.properties.key_value) where key in ('receipt_id')) as receipt_id
+select distinct 
+  (select value from unnest(beacon.properties.key_value) where key in ('receipt_id')) as receipt_id, 
 from 
-  `etsy-visit-pipe-prod.canonical.visit_id_beacons`  a
+  (select 
+    visit_id 
+  from 
+    etsy-data-warehouse-prod.weblog.visits 
+  where 
+    top_channel in ('email_transactional')
+    and _date >= current_date-90
+    and landing_event in ('giftreceipt_view', 'gift_recipientview_boe_view')) a
 inner join 
-  etsy-data-warehouse-prod.weblog.visits b 
-    using (visit_id)
+`etsy-visit-pipe-prod.canonical.visit_id_beacons`  b
+  using (visit_id)
 where 
-  date(a._partitiontime) >= current_date-90
+  date(b._partitiontime) >= current_date-90
   and beacon.event_name in ('giftreceipt_view', 'gift_recipientview_boe_view') -- does gift_recipientview_boe_view fire for all gift teaser views on boe?
-  and b.top_channel in ('email_transactional')
-  and b._date >= current_date-90
-  and b.landing_event in ('giftreceipt_view', 'gift_recipientview_boe_view')
 )
+, email_metrics as (
 select distinct
 	a.*
 	, b.euid as delivered
   , c.euid as bounced
   , d.euid as opened
   , e.euid as clicked
-	, case when f.receipt_id is not null then 1 else 0 end as visited -- if receipt is visited, then 1 
 from
 	gift_teasers a 
 left join 
@@ -96,6 +99,12 @@ left join
     and a.email_sent_date = date(timestamp_seconds(e.send_date))
 	  and date(timestamp_seconds(e.send_date)) >= last_date
 		and e.euid=d.euid -- is this right-- only opened emails can be clicked?
+)
+select 
+a.*
+,  max(case when f.receipt_id is not null and clicked is not null then 1 else 0 end) as visited -- if receipt is visited, then 1 
+from 
+  email_metrics a 
 left join 
 	visits f
 		on a.receipt_id=cast(f.receipt_id as int64)
