@@ -1,6 +1,3 @@
---------------------------------------------------------------------------------------------------------------------------------------------------------
--- I TOOK THE OLD RECEIPT DATA ROLL UP AND ADDED IN: VIDEO, AUDIO, CONTENT FLAG, SHARED GT
---------------------------------------------------------------------------------------------------------------------------------------------------------
 -- owner: awaagner@etsy.com
 -- owner_team: product-asf@etsy.com
 -- description: tracking receipt email info between gift purchases
@@ -26,19 +23,19 @@ select
   , gr.create_page_source
   , gr.thank_you_note
   , med.media_type -- video=0, audio=1 
-  , case when flag.gift_receipt_options_id is not null then '1' else '0' end as moderation_flag
-  , flag.reason
+  , case when flag.gift_receipt_options_id is not null then '1' else '0' end as moderation_flag 
+  , flag.reason 
 from
   `etsy-data-warehouse-prod.etsy_shard.gift_receipt_options` gr
 left join 
-  (select gift_receipt_options_id, media_type from etsy-data-warehouse-prod.etsy_shard.gift_receipt_media where state != 2) med
+  (select gift_receipt_options_id, media_type from etsy-data-warehouse-prod.etsy_shard.gift_receipt_media where state != 2-- includes deleted) med
     using (gift_receipt_options_id)
 left join 
   (select   
     JSON_VALUE(reason, "$.reason") as reason 
     , JSON_VALUE(reason, "$.gift_receipt_options_id") as gift_receipt_options_id 
   from `etsy-data-warehouse-prod.etsy_aux.flag` 
-    where flag_type_id = 1262867763708
+    where flag_type_id = 1262867763708 -- this is gift teaser flag 
     and (user_id not in (474509404, 483963146, 315096955, 56578860, 260578851, 146845291, 56575154)) -- excludes engineers that were testing
     ) flag
   on gr.gift_receipt_options_id=cast(flag.gift_receipt_options_id as int64)
@@ -114,6 +111,7 @@ select
   , a.is_guest_checkout
   , a.media_type
   , a.moderation_flag
+  , a.reason
   , case when a.thank_you_note is not null then 1 else 0 end as thank_you_note_sent
   , coalesce(count(distinct a.receipt_id),0) as n_orders
   , coalesce(sum(n_transactions),0) as n_transactions
