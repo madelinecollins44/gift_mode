@@ -29,8 +29,8 @@ with all_gift_idea_deliveries as (
     , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean
 		, (select value from unnest(beacon.properties.key_value) where key = "gift_idea_id") as gift_idea_id
     -- , (select value from unnest(beacon.properties.key_value) where key = "refTag") as refTag
-    -- , (select value from unnest(beacon.properties.key_value) where key = "listing_ids") as listing_ids
-        , split((select value from unnest(beacon.properties.key_value) where key = "listing_ids"), ",")as lisitngs_clean
+    , (select value from unnest(beacon.properties.key_value) where key = "listing_ids") as listing_ids
+        -- , split((select value from unnest(beacon.properties.key_value) where key = "listing_ids"), ",")as lisitngs_clean
     , (select value from unnest(beacon.properties.key_value) where key = "occasion_id") as occasion_id
     , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
 	from
@@ -50,8 +50,11 @@ select
   , a.gift_idea_id
   , a.visit_id
    , a.module_placement_clean
+   , listing_id
 from 
   all_gift_idea_deliveries a
+cross join 
+   unnest(split(listing_ids, ',')) as listing_id
 left join 
 	etsy-data-warehouse-prod.etsy_aux.gift_mode_occasion_entity b
     on a.occasion_id = cast(b.occasion_id as string)
@@ -66,9 +69,12 @@ select
   , a.gift_idea_id
   , a.visit_id
   , a.module_placement_clean
+  , listing_id
 from 
   all_gift_idea_deliveries a
-left join 
+cross join 
+   unnest(split(listing_ids, ',')) as listing_id
+  left join 
 	`etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_persona` b
     on a.persona_id = b.semaphore_guid
 where 
@@ -83,8 +89,9 @@ select
 	, v.is_admin_visit as admin
   , b.gift_idea_id
   , c.name as gift_idea
-	 , b.page_type
+	, b.page_type
   , b.page_name
+  , count(distinct b.listing_id) as unique_listings
 	, coalesce(count(case when module_placement_clean in ("boe_gift_mode_gift_idea_listings", "gift_mode_gift_idea_listings") then v.visit_id end),0) as shown_persona_page
 	, coalesce(count(case when module_placement_clean in ("gift_mode_occasion_gift_idea_listings") then v.visit_id end),0) as shown_occasions_page
 from
