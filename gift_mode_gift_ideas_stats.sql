@@ -88,7 +88,6 @@ select
 	, v.top_channel
 	, v.is_admin_visit as admin
   , b.gift_idea_id
-  , c.name as gift_idea
 	, b.page_type
   , b.page_name
   , count(distinct b.listing_id) as unique_listings
@@ -99,9 +98,6 @@ from
 join
 	deliveries b
     using(_date, visit_id)
-left join 
-  etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_gift_idea c
-    on b.gift_idea_id=c.semaphore_guid
 where
 	v._date >= current_date-2
 group by all
