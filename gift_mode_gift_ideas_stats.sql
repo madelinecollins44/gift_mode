@@ -123,7 +123,6 @@ select
   , visit_id
   , sequence_number 
   , listing_id
-  , REGEXP_SUBSTR(url, 'gift_idea_id=([^&]+)') AS gift_idea_id
 from 
   get_referrers
 where 
@@ -136,18 +135,41 @@ select
   , visit_id
   , sequence_number 
   , listing_id
-  , REGEXP_SUBSTR(url, 'gift_idea_id=([^&]+)') AS gift_idea_id
 from 
   get_referrers
 where 
   referrer like ('%gift-mode/persona/%')
 )
+, get_gift_id as (
+select -- this is only for mweb+desktop
+ 	date(_partitiontime)
+		, visit_id
+		, sequence_number
+		, beacon.event_name as event_name
+    , (select value from unnest(beacon.properties.key_value) where key = "listing_id") as listing_id
+		, case when 
+    	(select value from unnest(beacon.properties.key_value) where key = "gm_gift_idea_id") is not null then (select value from unnest(beacon.properties.key_value) where key = "gm_gift_idea_id") -- this is to grab gift_idea_id from persona pages 
+      else regexp_substr(beacon.loc, "gift_idea_id=([^*&?%]+)") --grabs gift_idea_id from occasion page
+      end as gift_idea_id
+from 
+  `etsy-visit-pipe-prod.canonical.visit_id_beacons`a
+inner join  
+  etsy-data-warehouse-prod.weblog.visits b using (visit_id)
+where 
+  beacon.event_name in ('view_listing')
+  and beacon.loc like ('%gift_idea_id%')
+  and date(_partitiontime) >= current_date-2 
+  and b._date >= current_date-2 
+  and b.platform in ('mobile_web','desktop')
+)
 select 
   a.visit_id
   , b.page_name
   , b.page_type
-  , regexp_substr(beacon.loc, "gift_idea_id=([^*&?%]+)") as gift_idea_id	-- exists on web only
-  , purchased_after_view
+  , a.listing_id
+  , a.sequence_number 
+  , a.purchased_after_view
+  , c.gift_idea_id
 from 
   etsy-data-warehouse-prod.analytics.listing_views a
 inner join 
@@ -156,12 +178,10 @@ inner join
     and a.sequence_number=b.sequence_number
     and a.listing_id=cast(b.listing_id as int64)
 inner join 
-  `etsy-visit-pipe-prod`.canonical.visit_id_beacons c 
+  get_gift_id c
     on a.visit_id=c.visit_id
     and a.sequence_number=c.sequence_number
-    -- and a.listing_id=c.listing_id 
+    and a.listing_id=cast(c.listing_id as int64)
 where
-  	beacon.event_name = 'view_listing'
-    and date(c._partitiontime)>= current_date-2
-    and a._date >= current_date-2
+    a._date >= current_date-2
 
