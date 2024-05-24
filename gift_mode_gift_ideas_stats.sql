@@ -101,7 +101,9 @@ group by all
 );
 
 ---work in progress
-with get_referrers as (
+
+create or replace temporary table listing_views as (
+with get_referrers as ( -- i found the referrers this way so it was easier to grab the occasion + persona names 
 select 
   referrer
   , visit_id
@@ -140,17 +142,15 @@ from
 where 
   referrer like ('%gift-mode/persona/%')
 )
-, get_gift_id as (
+, get_gift_id as ( -- this grabs the gift_idea_id from the beacons table
 select -- this is only for mweb+desktop
  	date(_partitiontime)
 		, visit_id
 		, sequence_number
 		, beacon.event_name as event_name
+    , beacon.loc as loc
     , (select value from unnest(beacon.properties.key_value) where key = "listing_id") as listing_id
-		, case when 
-    	(select value from unnest(beacon.properties.key_value) where key = "gm_gift_idea_id") is not null then (select value from unnest(beacon.properties.key_value) where key = "gm_gift_idea_id") -- this is to grab gift_idea_id from persona pages 
-      else regexp_substr(beacon.loc, "gift_idea_id=([^*&?%]+)") --grabs gift_idea_id from occasion page
-      end as gift_idea_id
+		, regexp_substr(beacon.loc, "gift_idea_id=([^*&?%]+)") as gift_idea_id-- grabs gift idea
 from 
   `etsy-visit-pipe-prod.canonical.visit_id_beacons`a
 inner join  
@@ -169,19 +169,32 @@ select
   , a.listing_id
   , a.sequence_number 
   , a.purchased_after_view
+  , c.loc
   , c.gift_idea_id
+  , case 
+      when b.page_type in ('occasion') then INITCAP(REPLACE(d.slug))
+      when b.page_type in ('persona') then e.name
+      else 'error' 
+    end as gift_idea
 from 
   etsy-data-warehouse-prod.analytics.listing_views a
 inner join 
-  referrers b
-    on a.visit_id=b.visit_id
-    and a.sequence_number=b.sequence_number
-    and a.listing_id=cast(b.listing_id as int64)
-inner join 
-  get_gift_id c
+  get_gift_id c --i grab the view_listing event from beacons and tie it to analytics listings views
     on a.visit_id=c.visit_id
     and a.sequence_number=c.sequence_number
     and a.listing_id=cast(c.listing_id as int64)
+left join 
+  referrers b -- i grabbed the view_listing event from the events table and matched the referrers to the listing views
+    on a.visit_id=b.visit_id
+    and a.sequence_number=b.sequence_number
+    and a.listing_id=cast(b.listing_id as int64)
+left join 
+    etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_entity d
+    on c.gift_idea_id=cast(d.gift_idea_id as string)
+left join 
+  etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_gift_idea e
+    on c.gift_idea_id=e.semaphore_guid
 where
-    a._date >= current_date-2
+  a._date >= current_date-2
+);
 
