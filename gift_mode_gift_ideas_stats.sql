@@ -103,6 +103,130 @@ where
 group by all
 );
 
+create or replace temporary table listing_gms as (
+select
+	tv.date as _date
+	, tv.visit_id
+	, tv.platform_app as platform
+	, tv.transaction_id
+	, t.listing_id
+	, tg.trans_gms_net
+from
+	`etsy-data-warehouse-prod`.transaction_mart.transactions_visits tv
+join
+	`etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans tg
+using(transaction_id)
+join
+	`etsy-data-warehouse-prod`.transaction_mart.all_transactions t
+on
+	tv.transaction_id = t.transaction_id
+where
+	tv.date >= last_date
+)
+;
+
+--get all primary events for places gift ideas deliver (use this as referring info)
+create or replace temporary table clicks as (
+with get_primary_pages as ( -- all clicks to gift ideas should come from persona or occasion page (soon to add search) 
+select
+	date(_partitiontime) as _date
+	, visit_id
+	, sequence_number
+	, beacon.event_name as event_name
+  , (select value from unnest(beacon.properties.key_value) where key = "occasion_id") as occasion_id
+  , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
+from
+	`etsy-visit-pipe-prod.canonical.visit_id_beacons`
+where date(_partitiontime) >= current_date-2
+	and beacon.event_name in ('gift_mode_persona','gift_mode_occasions_page') -- will need to add search 
+), referring_primary_page as (
+select -- this gets the occasion_id from the referring page
+	_date
+	, visit_id
+	, sequence_number
+	, event_name
+  , occasion_id as page_id
+from get_primary_pages
+where event_name in ('gift_mode_occasions_page')
+union all 
+select -- this gets the persona_id from the referring page
+	_date
+	, visit_id
+	, sequence_number
+	, event_name
+  , persona_id as page_id
+from get_primary_pages
+where event_name in ('gift_mode_persona')
+)
+, get_refs_tags as (
+select -- this is only for mweb+desktop
+    date(_partitiontime)
+    , visit_id
+    , sequence_number
+    , beacon.event_name as event_name
+    , beacon.loc as loc
+    , (select value from unnest(beacon.properties.key_value) where key = "listing_id") as listing_id
+    , regexp_substr(beacon.loc, "gift_idea_id=([^*&?%]+)") as gift_idea_id-- grabs gift idea
+from 
+  `etsy-visit-pipe-prod.canonical.visit_id_beacons`a
+inner join  
+  etsy-data-warehouse-prod.weblog.visits b using (visit_id)
+where 
+  beacon.event_name in ('view_listing')
+  and beacon.loc like ('%gift_idea_id%')
+  and date(_partitiontime) >= current_date-2 
+  and b._date >= current_date-2 
+  and b.platform in ('mobile_web','desktop')
+------union all: for boe will use referrers 
+)
+, clicks as (
+select 
+  a._date
+  , b.gift_idea_id
+  , c.event_name 
+  , c.page_id -- referring 
+  , a.listing_id
+  , a.visit_id
+  , coalesce(count(a.listing_id),0) as n_listing_views
+  , coalesce(max(a.purchased_after_view),0) as purchased_after_view
+from 
+  etsy-data-warehouse-prod.analytics.listing_views a
+inner join 
+  get_refs_tags b
+    on a.listing_id=cast(b.listing_id as int64)
+    and a.sequence_number=b.sequence_number
+    and a.visit_id=b.visit_id
+left join  
+  referring_primary_page c
+    on c.event_name=a.referring_page_event
+    and c.sequence_number=a.referring_page_event_sequence_number
+    and a.visit_id=c.visit_id
+where
+  a._date >= current_date-2
+)
+select
+ a._date
+  , a.gift_idea_id
+  , a.event_name
+  , a.page_id -- referring 
+  , count(a.visit_id) as clicks
+  , sum(a.n_listing_views) as total_listing_views
+  , count(distinct a.listing_id) as unique_listings_viewed
+  , count(distinct transaction_id) as unique_transactions
+  , sum(a.purchased_after_view) as total_purchased_listings
+  , coalesce(sum(b.trans_gms_net),0) as attr_gms
+from 
+  clicks a
+left join
+  listing_gms b
+on
+  a._date = b._date
+  and a.visit_id = b.visit_id
+  and a.listing_id = b.listing_id
+  and a.purchased_after_view > 0 -- this means there must have been a purchase 
+group by all
+);
+
 ---work in progress
 
 create or replace temporary table listing_views as (
