@@ -6,7 +6,7 @@ BEGIN
 
 declare last_date date;
 
---drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`;
+drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`;
 
 create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`  (
 	_date DATE
@@ -14,7 +14,7 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
 	, region STRING
 	, top_channel STRING
 	, admin int64
-  , gift_idea_id int64
+  , gift_idea_id STRING
   , page_type STRING
   , page_name STRING
   -- , unique_listings int64
@@ -267,7 +267,7 @@ select
   , a.gift_idea_id
   , a.page_type
   , case 
-      when b.name is not null then b.name
+      when c.name is not null then c.name
       when d.slug is not null then d.slug
       else 'error'
     end as page_name
@@ -291,10 +291,10 @@ left join
     and a.page_type = b.event_name
 left join 
   `etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_persona` c
-    on a.persona_id = c.semaphore_guid 
+    on a.page_id = c.semaphore_guid 
 left join 
   etsy-data-warehouse-prod.etsy_aux.gift_mode_occasion_entity d
-    on a.occasion_id = cast(d.occasion_id as string)
+    on a.page_id = cast(d.occasion_id as string)
 );
 
 END
