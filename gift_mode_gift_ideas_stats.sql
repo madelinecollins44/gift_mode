@@ -17,7 +17,6 @@
 --  end if;
 
 -- set last_date = current_date - 2;
-
 create or replace temporary table rec_mod as (
 with all_gift_idea_deliveries as (
 	select
@@ -27,10 +26,9 @@ with all_gift_idea_deliveries as (
 		, beacon.event_name as event_name
 		, (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
     , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean
-		, (select value from unnest(beacon.properties.key_value) where key = "gift_idea_id") as gift_idea_id
-    -- , (select value from unnest(beacon.properties.key_value) where key = "refTag") as refTag
+		, (select value from unnest(beacon.properties.key_value) where key = "gift_idea_id") as gift_idea_id 
+    , (select value from unnest(beacon.properties.key_value) where key = "gift_idea_id") as gift_idea_ids -- this is for boe gift mode search, has gift_idea_id and persona_id 
     , (select value from unnest(beacon.properties.key_value) where key = "listing_ids") as listing_ids
-        -- , split((select value from unnest(beacon.properties.key_value) where key = "listing_ids"), ",")as lisitngs_clean
     , (select value from unnest(beacon.properties.key_value) where key = "occasion_id") as occasion_id
     , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
 	from
@@ -40,24 +38,25 @@ with all_gift_idea_deliveries as (
 	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%") -- mweb/ desktop occasions
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%") -- mweb/ desktop personas
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_gift_idea_listings%") -- boe personas
-	or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_search_gift_ideas%") -- boe search
-)
+	      or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_search_gift_ideas%") -- boe search-- gift_idea_deliveries 
+      	or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like (" boe_gift_mode_search_listings%") -- boe search-- actual listing deliveries
+))
 , deliveries as (
 select  -- this is for mweb/ desktop occasions
   a._date 
   , 'occasion' as page_type
-  , b.slug as page_name 
+  , a.occasion_id as page_id 
   , a.gift_idea_id
   , a.visit_id
    , a.module_placement_clean
-   , listing_id
+  --  , listing_id
 from 
   all_gift_idea_deliveries a
-cross join 
-   unnest(split(listing_ids, ',')) as listing_id
-left join 
-	etsy-data-warehouse-prod.etsy_aux.gift_mode_occasion_entity b
-    on a.occasion_id = cast(b.occasion_id as string)
+-- cross join 
+--    unnest(split(listing_ids, ',')) as listing_id
+-- left join 
+-- 	etsy-data-warehouse-prod.etsy_aux.gift_mode_occasion_entity b
+--     on a.occasion_id = cast(b.occasion_id as string)
 where 
   module_placement_clean in ('gift_mode_occasion_gift_idea_listings') 
 group by all
@@ -65,20 +64,37 @@ union all
 select  -- this is for all personas
   _date 
   , 'persona' as page_type
-  , b.name as page_name 
+  , a.persona_id as page_id
   , a.gift_idea_id
   , a.visit_id
   , a.module_placement_clean
-  , listing_id
+  -- , listing_id
+from 
+  all_gift_idea_deliveries a
+-- cross join 
+--    unnest(split(listing_ids, ',')) as listing_id
+  -- left join 
+	-- `etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_persona` b
+  --   on a.persona_id = b.semaphore_guid
+where 
+  module_placement_clean in ('gift_mode_gift_idea_listings','boe_gift_mode_gift_idea_listings')
+group by all
+union all
+select  -- this is for all boe search 
+  _date 
+  , 'persona' as page_type -- keeping this as persona bc hats whay gift_idea_ids array says 
+	, gift_idea_ids
+ , split(split(gift_idea_ids, '"persona_id":"')[safe_offset(1)], '"')[safe_offset(0)] AS page_id
+ , split(split(gift_idea_ids, '"gift_idea_id":"')[safe_offset(1)], '"')[safe_offset(0)] AS gift_idea_id
+  , a.visit_id
+  , a.module_placement_clean
+	--   , listing_id -- need to get this from different module
 from 
   all_gift_idea_deliveries a
 cross join 
-   unnest(split(listing_ids, ',')) as listing_id
-  left join 
-	`etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_persona` b
-    on a.persona_id = b.semaphore_guid
+   unnest(split(gift_idea_ids, '},')) as gift_idea_ids
 where 
-  module_placement_clean in ('gift_mode_gift_idea_listings','boe_gift_mode_gift_idea_listings')
+  module_placement_clean in ('boe_gift_mode_search_gift_ideas')
 group by all
 )
 select
@@ -90,9 +106,10 @@ select
   , b.gift_idea_id
 	, b.page_type
   , b.page_name
-  , count(distinct b.listing_id) as unique_listings
+  -- , count(distinct b.listing_id) as unique_listings
 	, coalesce(count(case when module_placement_clean in ("boe_gift_mode_gift_idea_listings", "gift_mode_gift_idea_listings") then v.visit_id end),0) as shown_persona_page
 	, coalesce(count(case when module_placement_clean in ("gift_mode_occasion_gift_idea_listings") then v.visit_id end),0) as shown_occasions_page
+	, coalesce(count(case when module_placement_clean in ("boe_gift_mode_search_gift_ideas") then v.visit_id end),0) as shown_search_page
 from
 	`etsy-data-warehouse-prod`.weblog.recent_visits v
 join
@@ -324,4 +341,3 @@ left join
 where
   a._date >= current_date-2
 );
-
