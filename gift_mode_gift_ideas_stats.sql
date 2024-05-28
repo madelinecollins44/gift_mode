@@ -2,21 +2,40 @@
 --owner_team: product-asf@etsy.com
 --description: a rollup for measuring engagement with the gift mode discovery experience
 
--- BEGIN
+BEGIN
 
--- declare last_date date;
+declare last_date date;
 
--- drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`;
+--drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`;
 
--- create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`  (
--- );
+create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`  (
+	_date DATE
+	, platform STRING
+	, region STRING
+	, top_channel STRING
+	, admin int64
+  , gift_idea_id int64
+  , page_type STRING
+  , page_name STRING
+  -- , unique_listings int64
+	, shown_persona_page  int64
+	, shown_occasions_page int64
+	, shown_search_page int64
+  , clicks int64
+  , total_listing_views int64
+  , unique_listings_viewed int64
+  , unique_transactions int64
+  , total_purchased_listings int64
+  , attr_gms int64
+);
 
 -- in case of day 1, backfill for 30 days
 -- set last_date = (select max(_date) from `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`);
 --  if last_date is null then set last_date = (select min(_date)-1 from `etsy-data-warehouse-prod.weblog.events`);
 --  end if;
 
--- set last_date = current_date - 2;
+set last_date = current_date - 2;
+
 create or replace temporary table rec_mod as (
 with all_gift_idea_deliveries as (
 	select
@@ -33,7 +52,7 @@ with all_gift_idea_deliveries as (
     , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
 	from
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons`
-	where date(_partitiontime) >= current_date-2
+	where date(_partitiontime) >= last_date
 	  and beacon.event_name = "recommendations_module_delivered"
 	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%") -- mweb/ desktop occasions
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%") -- mweb/ desktop personas
@@ -54,9 +73,6 @@ from
   all_gift_idea_deliveries a
 -- cross join 
 --    unnest(split(listing_ids, ',')) as listing_id
--- left join 
--- 	etsy-data-warehouse-prod.etsy_aux.gift_mode_occasion_entity b
---     on a.occasion_id = cast(b.occasion_id as string)
 where 
   module_placement_clean in ('gift_mode_occasion_gift_idea_listings') 
 group by all
@@ -73,9 +89,6 @@ from
   all_gift_idea_deliveries a
 -- cross join 
 --    unnest(split(listing_ids, ',')) as listing_id
-  -- left join 
-	-- `etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_persona` b
-  --   on a.persona_id = b.semaphore_guid
 where 
   module_placement_clean in ('gift_mode_gift_idea_listings','boe_gift_mode_gift_idea_listings')
 group by all
@@ -83,7 +96,6 @@ union all
 select  -- this is for all boe search 
   _date 
   , 'persona' as page_type -- keeping this as persona bc hats whay gift_idea_ids array says 
-	, gift_idea_ids
  , split(split(gift_idea_ids, '"persona_id":"')[safe_offset(1)], '"')[safe_offset(0)] AS page_id
  , split(split(gift_idea_ids, '"gift_idea_id":"')[safe_offset(1)], '"')[safe_offset(0)] AS gift_idea_id
   , a.visit_id
@@ -105,7 +117,7 @@ select
 	, v.is_admin_visit as admin
   , b.gift_idea_id
 	, b.page_type
-  , b.page_name
+  , b.page_id
   -- , count(distinct b.listing_id) as unique_listings
 	, coalesce(count(case when module_placement_clean in ("boe_gift_mode_gift_idea_listings", "gift_mode_gift_idea_listings") then v.visit_id end),0) as shown_persona_page
 	, coalesce(count(case when module_placement_clean in ("gift_mode_occasion_gift_idea_listings") then v.visit_id end),0) as shown_occasions_page
@@ -116,7 +128,7 @@ join
 	deliveries b
     using(_date, visit_id)
 where
-	v._date >= current_date-2
+	v._date >= last_date
 group by all
 );
 
@@ -154,7 +166,7 @@ select
   , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
 from
 	`etsy-visit-pipe-prod.canonical.visit_id_beacons`
-where date(_partitiontime) >= current_date-2
+where date(_partitiontime) >= last_date
 	and beacon.event_name in ('gift_mode_persona','gift_mode_occasions_page') -- will need to add search 
 ), referring_primary_page as (
 select -- this gets the occasion_id from the referring page
@@ -191,8 +203,8 @@ inner join
 where 
   beacon.event_name in ('view_listing')
   and beacon.loc like ('%gift_idea_id%')
-  and date(_partitiontime) >= current_date-2 
-  and b._date >= current_date-2 
+  and date(_partitiontime) >= last_date
+  and b._date >= last_date
   and b.platform in ('mobile_web','desktop')
 ------union all: for boe will use referrers 
 )
@@ -219,7 +231,8 @@ left join
     and c.sequence_number=a.referring_page_event_sequence_number
     and a.visit_id=c.visit_id
 where
-  a._date >= current_date-2
+  a._date >= last_date
+group by all 
 )
 select
  a._date
@@ -244,100 +257,44 @@ on
 group by all
 );
 
----work in progress
-
-create or replace temporary table listing_views as (
-with get_referrers as ( -- i found the referrers this way so it was easier to grab the occasion + persona names 
+insert into `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats` (
 select 
-  referrer
-  , visit_id
-  , sequence_number 
-  , listing_id
-  , url
-from 
-  etsy-data-warehouse-prod.weblog.events a
-where 
-  event_type in ('view_listing') 
-  and (referrer like ('%gift-mode/occasion/%')
-      or (referrer like ('%gift-mode/persona/%'))) -- add in search here 
-)
-, referrers as (
-select
-  referrer
-  , INITCAP(REPLACE(REGEXP_SUBSTR(referrer, 'gift-mode/occasion/([^/?]+)'),"-"," ")) AS page_name
-  , REGEXP_SUBSTR(referrer, 'gift-mode/([^/?]+)') AS page_type
-  , visit_id
-  , sequence_number 
-  , listing_id
-from 
-  get_referrers
-where 
-  referrer like ('%gift-mode/occasion/%')
-union all 
-select
-  referrer
-  , INITCAP(REPLACE(REGEXP_SUBSTR(referrer, 'gift-mode/persona/([^/?]+)'),"-"," ")) AS page_name
-  , REGEXP_SUBSTR(referrer, 'gift-mode/([^/?]+)') AS page_type
-  , visit_id
-  , sequence_number 
-  , listing_id
-from 
-  get_referrers
-where 
-  referrer like ('%gift-mode/persona/%')
-)
-, get_gift_id as ( -- this grabs the gift_idea_id from the beacons table
-select -- this is only for mweb+desktop
- 	date(_partitiontime)
-		, visit_id
-		, sequence_number
-		, beacon.event_name as event_name
-    , beacon.loc as loc
-    , (select value from unnest(beacon.properties.key_value) where key = "listing_id") as listing_id
-		, regexp_substr(beacon.loc, "gift_idea_id=([^*&?%]+)") as gift_idea_id-- grabs gift idea
-from 
-  `etsy-visit-pipe-prod.canonical.visit_id_beacons`a
-inner join  
-  etsy-data-warehouse-prod.weblog.visits b using (visit_id)
-where 
-  beacon.event_name in ('view_listing')
-  and beacon.loc like ('%gift_idea_id%')
-  and date(_partitiontime) >= current_date-2 
-  and b._date >= current_date-2 
-  and b.platform in ('mobile_web','desktop')
-)
-select 
-  a.visit_id
-  , b.page_name
-  , b.page_type
-  , a.listing_id
-  , a.sequence_number 
-  , a.purchased_after_view
-  , c.loc
-  , c.gift_idea_id
+	a._date
+	, a.platform
+	, a.region
+	, a.top_channel
+	, a.admin
+  , a.gift_idea_id
+  , a.page_type
   , case 
-      when b.page_type in ('occasion') then INITCAP(REPLACE(d.slug))
-      when b.page_type in ('persona') then e.name
-      else 'error' 
-    end as gift_idea
+      when b.name is not null then b.name
+      when d.slug is not null then d.slug
+      else 'error'
+    end as page_name
+  -- , count(distinct b.listing_id) as unique_listings
+	, coalesce(shown_persona_page) as shown_persona_page 
+	, coalesce(shown_occasions_page) as shown_occasions_page 
+	, coalesce(shown_search_page) as shown_search_page 
+  , coalesce(b.clicks) as clicks
+  , coalesce(b.total_listing_views) as total_listing_views
+  , coalesce(b.unique_listings_viewed) as unique_listings_viewed
+  , coalesce(b.unique_transactions) as unique_transactions
+  , coalesce(b.total_purchased_listings) as total_purchased_listings
+  , coalesce(b.attr_gms) as attr_gms
 from 
-  etsy-data-warehouse-prod.analytics.listing_views a
-inner join 
-  get_gift_id c --i grab the view_listing event from beacons and tie it to analytics listings views
-    on a.visit_id=c.visit_id
-    and a.sequence_number=c.sequence_number
-    and a.listing_id=cast(c.listing_id as int64)
+	rec_mod a 
 left join 
-  referrers b -- i grabbed the view_listing event from the events table and matched the referrers to the listing views
-    on a.visit_id=b.visit_id
-    and a.sequence_number=b.sequence_number
-    and a.listing_id=cast(b.listing_id as int64)
+	clicks b 
+    on a._date = b._date 
+    and a.gift_idea_id = b.gift_idea_id
+    and a.page_id = b.page_id
+    and a.page_type = b.event_name
 left join 
-    etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_entity d
-    on c.gift_idea_id=cast(d.gift_idea_id as string)
+  `etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_persona` c
+    on a.persona_id = c.semaphore_guid 
 left join 
-  etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_gift_idea e
-    on c.gift_idea_id=e.semaphore_guid
-where
-  a._date >= current_date-2
+  etsy-data-warehouse-prod.etsy_aux.gift_mode_occasion_entity d
+    on a.occasion_id = cast(d.occasion_id as string)
 );
+
+END
