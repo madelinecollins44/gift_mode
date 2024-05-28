@@ -37,13 +37,13 @@ with all_gift_idea_deliveries as (
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons`
 	where date(_partitiontime) >= current_date-2
 	  and beacon.event_name = "recommendations_module_delivered"
-	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%")
-        or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%")
-        or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_gift_idea_listings%"))
-			------make sure to add in search here 
+	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%") -- mweb/ desktop occasions
+        or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%") -- mweb/ desktop personas
+        or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_gift_idea_listings%") -- boe personas
+	or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_search_gift_ideas%") -- boe search
 )
 , deliveries as (
-select 
+select  -- this is for mweb/ desktop occasions
   a._date 
   , 'occasion' as page_type
   , b.slug as page_name 
@@ -62,7 +62,7 @@ where
   module_placement_clean in ('gift_mode_occasion_gift_idea_listings') 
 group by all
 union all
-select 
+select  -- this is for all personas
   _date 
   , 'persona' as page_type
   , b.name as page_name 
