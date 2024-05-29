@@ -57,18 +57,18 @@ with all_gift_idea_deliveries as (
 	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%") -- mweb/ desktop occasions
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%") -- mweb/ desktop personas
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_gift_idea_listings%") -- boe personas
-	      or (select value from unnest(beacon.properties.key_value) where key = "module_placement") in ("boe_gift_mode_search_gift_ideas") -- boe search-- gift_idea_deliveries 
-      	or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_search_listings%") -- boe search-- actual listing deliveries
+	      -- or (select value from unnest(beacon.properties.key_value) where key = "module_placement") in ("boe_gift_mode_search_gift_ideas") -- boe search-- gift_idea_deliveries 
+      	or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_search_listings%") -- boe search-- this will have listing, gift_idea_ids, and persona_ids
 ))
-, cleaned_boe_search as (
-select 
-  _date 
-  , 'persona' as page_type -- keeping this as persona bc hats whay gift_idea_ids array says 
-  , a.page_id
-  , a.gift_idea_id_search as gift_idea_id
-  , a.visit_id
-  , a.module_placement_clean
-	, b.listing_id -- this comes from boe_gift_mode_search_listings
+-- , cleaned_boe_search as (
+-- select 
+--   _date 
+--   , 'persona' as page_type -- keeping this as persona bc hats whay gift_idea_ids array says 
+--   , a.page_id
+--   , a.gift_idea_id_search as gift_idea_id
+--   , a.visit_id
+--   , a.module_placement_clean
+-- 	, b.listing_id -- this comes from boe_gift_mode_search_listings
 from 
   (select 
     *
@@ -226,7 +226,7 @@ where
   and date(_partitiontime) >= last_date
   and b._date >= last_date
   and b.platform in ('mobile_web','desktop')
-------union all: for boe will use referrers 
+------union all: for boe will use referrers and module delilvered events: match module placements with reftags and that will give me gift_idea_id and persona_id
 )
 , clicks as (
 select 
