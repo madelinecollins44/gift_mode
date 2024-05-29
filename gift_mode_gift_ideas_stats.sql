@@ -345,8 +345,10 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
   , gift_idea_id STRING
   , gift_idea_name STRING
   , page_type STRING
+  , referring_page_event STRING
   , page_name STRING
   , unique_listings_delivered int64
+  , total_deliveries int64
 	, shown_persona_page  int64
 	, shown_occasions_page int64
   , clicks int64
@@ -363,6 +365,19 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
 --  end if;
 
 set last_date = current_date - 2;
+
+-- create or replace temporary table gift_idea_names as (
+-- select
+-- from
+--   etsy-data-warehouse-prod.etsy_aux.gift_mode_occasion_entity 
+-- union all 
+-- select
+-- name as name
+-- semaphore_guid as gift_idea_id
+-- from etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_gift_idea
+
+
+-- )
 
 create or replace temporary table rec_mod as (
 with all_gift_idea_deliveries as (
@@ -427,6 +442,7 @@ select
 	, b.page_type
   , b.page_id
   , count(distinct b.listing_id) as unique_listings
+  , count(visit_id) as total_deliveries
 	, coalesce(count(case when module_placement_clean in ("boe_gift_mode_gift_idea_listings", "gift_mode_gift_idea_listings") then v.visit_id end),0) as shown_persona_page
 	, coalesce(count(case when module_placement_clean in ("gift_mode_occasion_gift_idea_listings") then v.visit_id end),0) as shown_occasions_page
 from
@@ -517,7 +533,11 @@ where
 )
 , clicks as (
 select 
-  a._date
+v._date
+	, v.platform
+	, v.region
+	, v.top_channel
+  , v.is_admin_visit as admin  
   , b.gift_idea_id
   , c.event_name 
   , c.page_id -- referring 
@@ -527,30 +547,32 @@ select
   , coalesce(count(a.listing_id),0) as n_listing_views
   , coalesce(max(a.purchased_after_view),0) as purchased_after_view
 from 
+  etsy-data-warehouse-prod.weblog.visits v
+inner join -- only want listing views
   etsy-data-warehouse-prod.analytics.listing_views a
-inner join 
+    using (visit_id)
+inner join -- only want listings viewed from a loc with 'gift_idea_id' in title
   get_refs_tags b
     on a.listing_id=cast(b.listing_id as int64)
     and a.sequence_number=b.sequence_number
     and a.visit_id=b.visit_id
 left join  
-  referring_primary_page c
+  referring_primary_page c -- left join here so can grab all referring events 
     on c.event_name=a.referring_page_event
     and c.sequence_number=a.referring_page_event_sequence_number
     and a.visit_id=c.visit_id
 where
   a._date >= last_date
+  and v._date >= last_date
 group by all 
 )
 select
- 	v._date
-	, v.platform
-	, v.region
-	, v.top_channel
-	, v.is_admin_visit as admin
+ 	a._date
+	, a.platform
+	, a.region
+	, a.top_channel
+	, a.admin
   , a.gift_idea_id
-  , a.event_name
-  , a.referring_page_event
   , a.page_id -- referring 
   , count(a.visit_id) as clicks
   , sum(a.n_listing_views) as total_listing_views
@@ -559,10 +581,7 @@ select
   , sum(a.purchased_after_view) as total_purchased_listings
   , coalesce(sum(b.trans_gms_net),0) as attr_gms
 from 
-  etsy-data-warehouse-dev.weblog.visits v
-inner join 
   clicks a
-    on a.visit_id=v.visit_id
 left join
   listing_gms b
 on
@@ -571,7 +590,6 @@ on
   and a.listing_id = b.listing_id
   and a.platform = b.platform
   and a.purchased_after_view > 0 -- this means there must have been a purchase 
-where v._date >= last_date
 group by all
 );
 
@@ -583,7 +601,7 @@ select
 	, a.top_channel
 	, a.admin
   , a.gift_idea_id
-  , e.name as gift_idea_name
+  , e.slug as gift_idea_name
   , a.page_type
   , case 
       when c.name is not null then c.name
@@ -591,6 +609,7 @@ select
       else 'error'
     end as page_name
 	, coalesce(unique_listings,0) as unique_listings_delivered 
+  , coalesce(total_deliveries,0) as total_deliveries 
 	, coalesce(shown_persona_page,0) as shown_persona_page 
 	, coalesce(shown_occasions_page,0) as shown_occasions_page 
   , coalesce(b.clicks,0) as clicks
@@ -617,8 +636,8 @@ left join
   etsy-data-warehouse-prod.etsy_aux.gift_mode_occasion_entity d
     on a.page_id = cast(d.occasion_id as string)
 left join
-  etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_gift_idea e
-    on a.gift_idea_id=e.semaphore_guid
+  etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_entity e
+    on a.gift_idea_id=e.gift_idea_id
 );
 
 END
