@@ -343,6 +343,7 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
 	, top_channel STRING
 	, admin int64
   , gift_idea_id STRING
+  , gift_idea_name STRING
   , page_type STRING
   , page_name STRING
   , unique_listings_delivered int64
@@ -542,7 +543,11 @@ where
 group by all 
 )
 select
- a._date
+ 	v._date
+	, v.platform
+	, v.region
+	, v.top_channel
+	, v.is_admin_visit as admin
   , a.gift_idea_id
   , a.event_name
   , a.referring_page_event
@@ -554,14 +559,19 @@ select
   , sum(a.purchased_after_view) as total_purchased_listings
   , coalesce(sum(b.trans_gms_net),0) as attr_gms
 from 
+  etsy-data-warehouse-dev.weblog.visits v
+inner join 
   clicks a
+    on a.visit_id=v.visit_id
 left join
   listing_gms b
 on
   a._date = b._date
   and a.visit_id = b.visit_id
   and a.listing_id = b.listing_id
+  and a.platform = b.platform
   and a.purchased_after_view > 0 -- this means there must have been a purchase 
+where v._date >= last_date
 group by all
 );
 
@@ -573,22 +583,22 @@ select
 	, a.top_channel
 	, a.admin
   , a.gift_idea_id
-  , e.name
+  , e.name as gift_idea_name
   , a.page_type
   , case 
       when c.name is not null then c.name
       when d.slug is not null then initcap(replace(d.slug, '-', ' ')) 
       else 'error'
     end as page_name
-	, coalesce(unique_listings) as unique_listings_delivered 
-	, coalesce(shown_persona_page) as shown_persona_page 
-	, coalesce(shown_occasions_page) as shown_occasions_page 
-  , coalesce(b.clicks) as clicks
-  , coalesce(b.total_listing_views) as total_listing_views
-  , coalesce(b.unique_listings_viewed) as unique_listings_viewed
-  , coalesce(b.unique_transactions) as unique_transactions
-  , coalesce(b.total_purchased_listings) as total_purchased_listings
-  , coalesce(b.attr_gms) as attr_gms
+	, coalesce(unique_listings,0) as unique_listings_delivered 
+	, coalesce(shown_persona_page,0) as shown_persona_page 
+	, coalesce(shown_occasions_page,0) as shown_occasions_page 
+  , coalesce(b.clicks,0) as clicks
+  , coalesce(b.total_listing_views,0) as total_listing_views
+  , coalesce(b.unique_listings_viewed,0) as unique_listings_viewed
+  , coalesce(b.unique_transactions,0) as unique_transactions
+  , coalesce(b.total_purchased_listings,0) as total_purchased_listings
+  , coalesce(b.attr_gms,0) as attr_gms
 from 
 	rec_mod a 
 left join 
@@ -596,6 +606,10 @@ left join
     on a._date = b._date 
     and a.gift_idea_id = b.gift_idea_id
     and a.page_id = b.page_id
+    and a.platform=b.platform
+  	and a.region=b.region
+	  and a.top_channel=b.top_channel
+	  and a.admin=b.admin
 left join 
   `etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_persona` c
     on a.page_id = c.semaphore_guid 
