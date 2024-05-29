@@ -345,7 +345,6 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
   , gift_idea_id STRING
   , gift_idea_name STRING
   , page_type STRING
-  , referring_page_event STRING
   , page_name STRING
   , unique_listings_delivered int64
   , total_deliveries int64
@@ -591,7 +590,7 @@ on
   and a.platform = b.platform
   and a.purchased_after_view > 0 -- this means there must have been a purchase 
 group by all
-);
+); -- this table, about 2% of clicks come from pages other than persona or occasions page
 
 insert into `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats` (
 select 
@@ -637,6 +636,10 @@ left join
     on a.page_id = cast(d.occasion_id as string)
 left join
   etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_entity e
+    on a.gift_idea_id=cast(e.gift_idea_id as string)
+);
+
+END
     on a.gift_idea_id=e.gift_idea_id
 );
 
