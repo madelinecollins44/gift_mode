@@ -343,13 +343,12 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
 	, top_channel STRING
 	, admin int64
   , gift_idea_id STRING
-  , gift_idea_name STRING
   , page_type STRING
   , page_name STRING
-  , unique_listings_delivered int64
-  , total_deliveries int64
+  , unique_listings int64
 	, shown_persona_page  int64
 	, shown_occasions_page int64
+	, shown_search_page int64
   , clicks int64
   , total_listing_views int64
   , unique_listings_viewed int64
@@ -365,19 +364,21 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
 
 set last_date = current_date - 2;
 
--- create or replace temporary table gift_idea_names as (
--- select
--- from
---   etsy-data-warehouse-prod.etsy_aux.gift_mode_occasion_entity 
--- union all 
--- select
--- name as name
--- semaphore_guid as gift_idea_id
--- from etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_gift_idea
+--create table to pull all gift_ideas from both occasions and personas 
+create or replace temporary table gift_idea_names as (
+select
+  initcap(replace(slug,'-',' ')) as name
+  , cast(gift_idea_id as string) as gift_idea_id
+from
+  etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_entity -- for everything from gems/ occasions 
+union all 
+select
+  name as name
+  , semaphore_guid as gift_idea_id
+from etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_gift_idea -- for all persona related gift ideas 
+); 
 
-
--- )
-
+--create table to pull in all deliveries with gift ideas so can find impressions 
 create or replace temporary table rec_mod as (
 with all_gift_idea_deliveries as (
 	select
@@ -393,7 +394,7 @@ with all_gift_idea_deliveries as (
     , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
 	from
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons`
-	where date(_partitiontime) >= current_date-2
+	where date(_partitiontime) >= last_date
 	  and beacon.event_name = "recommendations_module_delivered"
 	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%") -- mweb/ desktop occasions
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%") -- mweb/ desktop personas
@@ -401,7 +402,7 @@ with all_gift_idea_deliveries as (
 , deliveries as (
 select  ---------------------- this is for mweb/ desktop occasions
   a._date 
-  , 'occasion' as page_type
+  , 'gift_mode_occasions_page' as page_type
   , a.occasion_id as page_id 
   , a.gift_idea_id
   , a.visit_id
@@ -417,7 +418,7 @@ group by all
 union all
 select  ---------------------- this is for all personas
   _date 
-  , 'persona' as page_type
+  , 'gift_mode_persona' as page_type
   , a.persona_id as page_id
   , a.gift_idea_id
   , a.visit_id
@@ -432,7 +433,7 @@ where
 group by all
 )
 select
- 	v._date
+	v._date
 	, v.platform
 	, v.region
 	, v.top_channel
@@ -441,19 +442,20 @@ select
 	, b.page_type
   , b.page_id
   , count(distinct b.listing_id) as unique_listings
-  , count(visit_id) as total_deliveries
 	, coalesce(count(case when module_placement_clean in ("boe_gift_mode_gift_idea_listings", "gift_mode_gift_idea_listings") then v.visit_id end),0) as shown_persona_page
 	, coalesce(count(case when module_placement_clean in ("gift_mode_occasion_gift_idea_listings") then v.visit_id end),0) as shown_occasions_page
+	, coalesce(count(case when module_placement_clean in ("boe_gift_mode_search_gift_ideas") then v.visit_id end),0) as shown_search_page
 from
 	`etsy-data-warehouse-prod`.weblog.recent_visits v
 join
 	deliveries b
     using(_date, visit_id)
 where
-	v._date >= current_date-2
+	v._date >= last_date
 group by all
 );
 
+--create table to gather general listing + transaction data 
 create or replace temporary table listing_gms as (
 select
 	tv.date as _date
@@ -476,7 +478,7 @@ where
 )
 ;
 
---get all primary events for places gift ideas deliver (use this as referring info)
+--create table to find listing views + assocaited persona/occasion ids from referring page events
 create or replace temporary table clicks as (
 with get_primary_pages as ( -- all clicks to gift ideas should come from persona or occasion page (soon to add search) 
 select
@@ -524,54 +526,43 @@ inner join
   etsy-data-warehouse-prod.weblog.visits b using (visit_id)
 where 
   beacon.event_name in ('view_listing')
-  and beacon.loc like ('%gift_idea_id%')
+  and (beacon.loc like ('%gift_idea_id%') and beacon.loc like ('%ref=gm_%')) -- comes from gift mode 
   and date(_partitiontime) >= last_date
   and b._date >= last_date
   and b.platform in ('mobile_web','desktop')
-------union all: for boe will use referrers 
 )
 , clicks as (
 select 
-v._date
-	, v.platform
-	, v.region
-	, v.top_channel
-  , v.is_admin_visit as admin  
+  a._date
   , b.gift_idea_id
-  , c.event_name 
+  , c.event_name --page name 
   , c.page_id -- referring 
-  , a.referring_page_event
   , a.listing_id
   , a.visit_id
   , coalesce(count(a.listing_id),0) as n_listing_views
   , coalesce(max(a.purchased_after_view),0) as purchased_after_view
 from 
-  etsy-data-warehouse-prod.weblog.visits v
-inner join -- only want listing views
   etsy-data-warehouse-prod.analytics.listing_views a
-    using (visit_id)
-inner join -- only want listings viewed from a loc with 'gift_idea_id' in title
+inner join 
   get_refs_tags b
     on a.listing_id=cast(b.listing_id as int64)
     and a.sequence_number=b.sequence_number
     and a.visit_id=b.visit_id
 left join  
-  referring_primary_page c -- left join here so can grab all referring events 
+  referring_primary_page c
     on c.event_name=a.referring_page_event
     and c.sequence_number=a.referring_page_event_sequence_number
     and a.visit_id=c.visit_id
 where
   a._date >= last_date
-  and v._date >= last_date
+  and referring_page_event in ('gift_mode_persona','gift_mode_occasions_page')
 group by all 
 )
 select
- 	a._date
-	, a.platform
-	, a.region
-	, a.top_channel
-	, a.admin
+ a._date
   , a.gift_idea_id
+  , a.event_name
+  , a.referring_page_event
   , a.page_id -- referring 
   , count(a.visit_id) as clicks
   , sum(a.n_listing_views) as total_listing_views
@@ -587,10 +578,9 @@ on
   a._date = b._date
   and a.visit_id = b.visit_id
   and a.listing_id = b.listing_id
-  and a.platform = b.platform
   and a.purchased_after_view > 0 -- this means there must have been a purchase 
 group by all
-); -- this table, about 2% of clicks come from pages other than persona or occasions page
+);
 
 insert into `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats` (
 select 
@@ -600,47 +590,39 @@ select
 	, a.top_channel
 	, a.admin
   , a.gift_idea_id
-  , e.slug as gift_idea_name
   , a.page_type
   , case 
       when c.name is not null then c.name
-      when d.slug is not null then initcap(replace(d.slug, '-', ' ')) 
+      when d.slug is not null then d.slug
       else 'error'
     end as page_name
-	, coalesce(unique_listings,0) as unique_listings_delivered 
-  , coalesce(total_deliveries,0) as total_deliveries 
-	, coalesce(shown_persona_page,0) as shown_persona_page 
-	, coalesce(shown_occasions_page,0) as shown_occasions_page 
-  , coalesce(b.clicks,0) as clicks
-  , coalesce(b.total_listing_views,0) as total_listing_views
-  , coalesce(b.unique_listings_viewed,0) as unique_listings_viewed
-  , coalesce(b.unique_transactions,0) as unique_transactions
-  , coalesce(b.total_purchased_listings,0) as total_purchased_listings
-  , coalesce(b.attr_gms,0) as attr_gms
+  -- , count(distinct b.listing_id) as unique_listings
+	, coalesce(shown_persona_page) as shown_persona_page 
+	, coalesce(shown_occasions_page) as shown_occasions_page 
+	, coalesce(shown_search_page) as shown_search_page 
+  , coalesce(b.clicks) as clicks
+  , coalesce(b.total_listing_views) as total_listing_views
+  , coalesce(b.unique_listings_viewed) as unique_listings_viewed
+  , coalesce(b.unique_transactions) as unique_transactions
+  , coalesce(b.total_purchased_listings) as total_purchased_listings
+  , coalesce(b.attr_gms) as attr_gms
 from 
-	rec_mod a 
+	rec_mod a -- only looks at deliveries from occasion + persona pages 
 left join 
-	clicks b 
+	clicks b  -- only looks at listing views associated with occasion + persona pages 
     on a._date = b._date 
     and a.gift_idea_id = b.gift_idea_id
     and a.page_id = b.page_id
-    and a.platform=b.platform
-  	and a.region=b.region
-	  and a.top_channel=b.top_channel
-	  and a.admin=b.admin
+    and a.page_type = b.referring_page_event
 left join 
   `etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_persona` c
     on a.page_id = c.semaphore_guid 
 left join 
   etsy-data-warehouse-prod.etsy_aux.gift_mode_occasion_entity d
     on a.page_id = cast(d.occasion_id as string)
-left join
-  etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_entity e
-    on a.gift_idea_id=cast(e.gift_idea_id as string)
-);
-
-END
-    on a.gift_idea_id=e.gift_idea_id
+left join 
+  gift_idea_names e
+    on a.gift_idea_id= e.gift_idea_id
 );
 
 END
