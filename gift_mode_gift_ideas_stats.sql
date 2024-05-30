@@ -337,23 +337,22 @@ declare last_date date;
 drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`;
 
 create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`  (
-	_date DATE
+	_date date
 	, platform STRING
 	, region STRING
 	, top_channel STRING
-	, admin int64
-  , gift_idea_id STRING
-  , page_type STRING
-  , page_name STRING
-  , unique_listings int64
-	, shown_persona_page  int64
-	, shown_occasions_page int64
-	-- , shown_search_page int64
-  , clicks int64
-  , total_listing_views int64
-  , unique_listings_viewed int64
-  , unique_transactions int64
-  , total_purchased_listings int64
+	, admin INT64
+  , name STRING
+  , delivery_name STRING
+  , delivery_page STRING
+	, shown_persona_page INT64
+	, shown_occasions_page INT64
+	-- , shown_search_page INT64
+  , clicks INT64
+  , total_listing_views INT64
+  , unique_listings_viewed INT64
+  , unique_transactions INT64
+  , total_purchased_listings INT64
   , attr_gms NUMERIC
 );
 
@@ -563,24 +562,23 @@ select
 	, a.region
 	, a.top_channel
 	, a.admin
-  , a.gift_idea_id
+  -- , a.gift_idea_id
+  , e.name
   , a.page_type as delivery_page
   , case 
       when c.name is not null then c.name
       when d.slug is not null then d.slug
       else 'error'
-    end as delivery_page
-  , b.referring_page_event as listing_view_source 
-  , count(distinct b.listing_id) as unique_listings
-	, coalesce(shown_persona_page) as shown_persona_page 
-	, coalesce(shown_occasions_page) as shown_occasions_page 
+    end as page_name
+	, coalesce(shown_persona_page,0) as shown_persona_page 
+	, coalesce(shown_occasions_page,0) as shown_occasions_page 
 	-- , coalesce(shown_search_page) as shown_search_page 
-  , coalesce(b.clicks) as clicks
-  , coalesce(b.total_listing_views) as total_listing_views
-  , coalesce(b.unique_listings_viewed) as unique_listings_viewed
-  , coalesce(b.unique_transactions) as unique_transactions
-  , coalesce(b.total_purchased_listings) as total_purchased_listings
-  , coalesce(b.attr_gms) as attr_gms
+  , coalesce(clicks,0) as clicks
+  , coalesce(total_listing_views,0) as total_listing_views
+  , coalesce(unique_listings_viewed,0) as unique_listings_viewed
+  , coalesce(unique_transactions,0) as unique_transactions
+  , coalesce(total_purchased_listings,0) as total_purchased_listings
+  , coalesce(attr_gms,0) as attr_gms
 from 
 	rec_mod a -- only looks at deliveries from occasion + persona pages 
 left join 
