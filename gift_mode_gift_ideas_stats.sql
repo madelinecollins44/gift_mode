@@ -342,6 +342,7 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
 	, region STRING
 	, top_channel STRING
 	, admin INT64
+  , gift_idea_id STRING
   , name STRING
   , delivery_name STRING
   , delivery_page STRING
@@ -562,7 +563,7 @@ select
 	, a.region
 	, a.top_channel
 	, a.admin
-  -- , a.gift_idea_id
+  , a.gift_idea_id
   , e.name
   , a.page_type as delivery_page
   , case 
@@ -595,6 +596,7 @@ left join
 left join 
   gift_idea_names e
     on a.gift_idea_id= e.gift_idea_id
+    ---later, will be able to use etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_relation as source of truth beyond next few weeks
 );
 
 END
