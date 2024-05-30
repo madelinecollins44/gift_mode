@@ -344,8 +344,9 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
 	, admin INT64
   , gift_idea_id STRING
   , name STRING
-  , delivery_name STRING
   , delivery_page STRING
+  , delivery_name STRING
+  , unique_listings_delivered INT64
 	, shown_persona_page INT64
 	, shown_occasions_page INT64
 	-- , shown_search_page INT64
@@ -570,7 +571,8 @@ select
       when c.name is not null then c.name
       when d.slug is not null then d.slug
       else 'error'
-    end as page_name
+    end as delivery_name
+  , coalesce(unique_listings,0) as unique_listings_delivered
 	, coalesce(shown_persona_page,0) as shown_persona_page 
 	, coalesce(shown_occasions_page,0) as shown_occasions_page 
 	-- , coalesce(shown_search_page) as shown_search_page 
