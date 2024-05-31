@@ -36,6 +36,28 @@
               , 'gift_mode_quiz_results' -- gift mode quiz results, boe
               -- boe search
             ))
+------------clicks + reftags
+		select 
+	_date 
+	, visit_id 
+	, sequence_number 
+  -- , 
+	-- , regexp_substr(e.referrer, "ref=([^*&?%|]+)") as boe_ref 
+	, ref_tag
+from 
+	`etsy-data-warehouse-prod`.weblog.events e 
+where 
+	_date >= current_date-3
+ref_tag in
+	('hp_gm_shop_by_occasion_module' -- Shop by occasion on homepage, web
+	, 'listing_suggested_personas_related' --Related personas module/ personas variant, web
+	, 'hub_GiftMode' --Gift Teaser promo banner on hub, web
+	, 'hp_promo_secondary_042224_US_Gifts_%' -- Onsite Promo Banner (Mother's Day/ Father's Day), web
+	, 'hp_promo_tertiary_042224_US_Gifts_%' -- Onsite Promo Banner (Mother's Day/ Father's Day), web
+	, 'GiftTeaser_MDAY24_Skinny_Sitewide' -- Skinny Banner (Mother's Day), web
+	and (ref_tag 
+			like ('listing_suggested_persona_listings_related%') --Related personas module on listing page, web
+			or like ('gm%') -- general ref_tags, web
     )
     
 
