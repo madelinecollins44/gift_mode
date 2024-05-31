@@ -112,6 +112,8 @@ ref_tag in
 ------------------------------------
 --LISTING VIEWS 
 ------------------------------------
+begin 
+
 create or replace temporary table listing_gms as (
 select
 	tv.date as _date
@@ -130,10 +132,11 @@ join
 on
 	tv.transaction_id = t.transaction_id
 where
-	tv.date >= last_date
+	tv.date >= current_date-2
 )
 ;
-create or temporary table listing_views as (
+
+create or replace temporary table listing_views as (
 with listing_views as (
 select 
 	_date 
@@ -145,7 +148,7 @@ select
 from 
 	`etsy-data-warehouse-prod`.weblog.events e 
 where 
-	_date >= last_date
+	_date >= current_date-2
 	and event_type = "view_listing"
 )
 , agg as (
@@ -172,13 +175,14 @@ left join
     and a._date=c._date
     and a.sequence_number=a.sequence_number 
 where 
-  ref_tag like ('gm_gift_idea_listings%') -- persona listing view, web
+  b._date >= current_date-2
+  and (ref_tag like ('gm_gift_idea_listings%') -- persona listing view, web
   or ref_tag like ('gm_occasion_gift_idea_listings-%') -- occasion listing view, web
   or ref_tag like ('gm_deluxe_persona_card%') -- quiz listing view, web
   or boe_referrer like ('boe_gift_mode_popular_gift_listings%') -- popular gift ideas listing view, web
   or boe_referrer like ('boe_gift_mode_gift_idea_listings%')-- persona listing view, boe
   or boe_referrer like ('gift_mode_occasion%')-- occasion listing view, boe
-  or boe_referrer like ('boe_gift_mode_editors_picks_listings%')-- occasion listing view, boe NEED TO CONFIRM
+  or boe_referrer like ('boe_gift_mode_editors_picks_listings%'))-- occasion listing view, boe NEED TO CONFIRM
 )
 select
 	a._date
@@ -197,3 +201,4 @@ from agg a
 left join listing_gms b
 );
 
+end
