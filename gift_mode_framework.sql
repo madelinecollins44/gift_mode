@@ -1,10 +1,6 @@
---track gift mode impressions: 
-----visits with a gift mode impression
-----total impressions 
-----visit level click rate
-----event level click rate
-
-with get_recmods_events as (
+--this table grabs visits across gift mode related content and core gift mode pages 
+create or replace temporary table impressions_and_visits as (
+  with get_recmods_events as (
   select
 		date(_partitiontime) as _date
 		, visit_id
@@ -54,7 +50,7 @@ inner join
 where 
   a._date >= current_date-2
 group by all 
-
+);
 
 ------------clicks + reftags
 		select 
