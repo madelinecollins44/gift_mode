@@ -1,5 +1,5 @@
 --this table grabs visits across gift mode related content and core gift mode pages 
-create or replace temporary table impressions_and_visits as (
+create or replace temporary table visits as (
   with get_recmods_events as (
   select
 		date(_partitiontime) as _date
