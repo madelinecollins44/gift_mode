@@ -1,3 +1,32 @@
+---can i make a temp table with all necessary events and update there instead of inquery as more events are added?
+begin
+
+--create table with all core gift mode events
+create or replace temporary table core_pages (event_name STRING);
+insert into core_pages (event_name)
+values
+('gift_mode_home') --gift mode home, boe + web
+  , ('gift_mode_persona')-- gift mode personas, boe + web 
+  , ('gift_mode_occasions_page')-- gift mode occasions, web
+  , ('gift_mode_browse_all_personas') -- see all personas, web
+  , ('gift_mode_see_all_personas') -- see all personas, boe
+  , ('gift_mode_results') -- gift mode quiz results, web
+  , ('gift_mode_quiz_results') -- gift mode quiz results, boe
+;
+
+--create table with all core gift mode events
+create or replace temporary table other_content (event_name STRING);
+insert into other_content (event_name)
+values
+  ('gift_mode_shop_by_occasions_module_seen') --shop by occasion module on homepage, web
+  , ('gm_gift_page_ingress_loaded') -- gift mode promo banner on gift category page, web
+  , ('search_gift_mode_banner_seen') -- gift mode promo banner on search page, web
+  , ('gm_hp_banner_loaded_seen') --homepage banner, web
+  , ('search_gift_mode_banner_seen')-- bottom of search page for gift queries, web
+  , ('gift_mode_introduction_modal_shown') --Gift Mode introduction overlay shown on homescreen, boe
+;
+
+
 --this table grabs visits across gift mode related content and core gift mode pages 
 create or replace temporary table visits as (
   with get_recmods_events as (
