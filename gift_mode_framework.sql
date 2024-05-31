@@ -4,8 +4,7 @@
 ----visit level click rate
 ----event level click rate
 
-	-- create or replace 
-  with get_recmods_events as (
+with get_recmods_events as (
   select
 		date(_partitiontime) as _date
 		, visit_id
@@ -16,7 +15,9 @@
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
 	where 
     date(_partitiontime) >= current_date-2
-	  and ((beacon.event_name = 'recommendations_module_delivered' and (select value from unnest(beacon.properties.key_value) where key = 'module_placement') in ('lp_suggested_personas_related','homescreen_gift_mode_personas')) --related personas module on listing page, web AND app home popular personas module delivered, boe
+	  and ((beacon.event_name = 'recommendations_module_delivered' 
+        and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') in ('lp_suggested_personas_related','homescreen_gift_mode_personas') --related personas module on listing page, web AND app home popular personas module delivered, boe
+        or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%') --Featured personas on hub, web
     or beacon.event_name in 
     ------various ingresses + banners 
     ('gift_mode_shop_by_occasions_module_seen' --shop by occasion module on homepage, web
@@ -39,7 +40,7 @@ select
 	, a.platform 
   , a.browser_platform 
 	, a.region  
-  , a.is_admin as admin 
+  , a.is_admin_visit as admin 
   , a.top_channel 
   , count(distinct visit_id) as visits
   , count(visit_id) as impressions
@@ -53,6 +54,7 @@ inner join
 where 
   a._date >= current_date-2
 group by all 
+
 
 ------------clicks + reftags
 		select 
