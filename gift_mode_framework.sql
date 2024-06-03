@@ -176,13 +176,16 @@ left join
     and a.sequence_number=a.sequence_number 
 where 
   b._date >= current_date-2
-  and (ref_tag like ('gm_gift_idea_listings%') -- persona listing view, web
-  or ref_tag like ('gm_occasion_gift_idea_listings-%') -- occasion listing view, web
-  or ref_tag like ('gm_deluxe_persona_card%') -- quiz listing view, web
-  or boe_referrer like ('boe_gift_mode_popular_gift_listings%') -- popular gift ideas listing view, web
-  or boe_referrer like ('boe_gift_mode_gift_idea_listings%')-- persona listing view, boe
-  or boe_referrer like ('gift_mode_occasion%')-- occasion listing view, boe
-  or boe_referrer like ('boe_gift_mode_editors_picks_listings%'))-- occasion listing view, boe NEED TO CONFIRM
+  and (ref_tag like ('gm_%') or ref_tag like ('gift_mode_%'))
+  or boe_referrer like ('boe_gift_mode%') 
+	
+  -- and (ref_tag like ('gm_gift_idea_listings%') -- persona listing view, web
+  -- or ref_tag like ('gm_occasion_gift_idea_listings-%') -- occasion listing view, web
+  -- or ref_tag like ('gm_deluxe_persona_card%') -- quiz listing view, web
+  -- or boe_referrer like ('boe_gift_mode_popular_gift_listings%') -- popular gift ideas listing view, web
+  -- or boe_referrer like ('boe_gift_mode_gift_idea_listings%')-- persona listing view, boe
+  -- or boe_referrer like ('gift_mode_occasion%')-- occasion listing view, boe
+  -- or boe_referrer like ('boe_gift_mode_editors_picks_listings%'))-- occasion listing view, boe NEED TO CONFIRM
 )
 select
 	a._date
