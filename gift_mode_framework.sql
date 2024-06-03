@@ -121,6 +121,16 @@ from
 where 
 	_date >= current_date-2
 	and event_type = "view_listing"
+  and ((ref_tag like ('gm_%') or ref_tag like ('gift_mode_%')) -- find ref tags of non-core visits 
+      or boe_referrer like ('boe_gift_mode%')) 
+  -- and (ref_tag like ('gm_gift_idea_listings%') -- persona listing view, web
+  -- or ref_tag like ('gm_occasion_gift_idea_listings-%') -- occasion listing view, web
+  -- or ref_tag like ('gm_deluxe_persona_card%') -- quiz listing view, web
+  -- or ref_tag like ('listing_suggested_persona_listings_related%') -- listings at bottom of listing page, web, NOT CORE 
+  -- or boe_referrer like ('boe_gift_mode_popular_gift_listings%') -- popular gift ideas listing view, web
+  -- or boe_referrer like ('boe_gift_mode_gift_idea_listings%')-- persona listing view, boe
+  -- or boe_referrer like ('gift_mode_occasion%')-- occasion listing view, boe
+  -- or boe_referrer like ('boe_gift_mode_editors_picks_listings%'))-- occasion listing view, boe NEED TO CONFIRM
 )
 , agg as (
 select
@@ -147,18 +157,6 @@ left join
     and a.sequence_number=a.sequence_number 
 where 
   b._date >= current_date-2
-  and (ref_tag like ('gm_%') or ref_tag like ('gift_mode_%')) -- find ref tags of non-core visits 
-  or boe_referrer like ('boe_gift_mode%') 
-
-	
-  -- and (ref_tag like ('gm_gift_idea_listings%') -- persona listing view, web
-  -- or ref_tag like ('gm_occasion_gift_idea_listings-%') -- occasion listing view, web
-  -- or ref_tag like ('gm_deluxe_persona_card%') -- quiz listing view, web
-  -- or ref_tag like ('listing_suggested_persona_listings_related%') -- listings at bottom of listing page, web, NOT CORE 
-  -- or boe_referrer like ('boe_gift_mode_popular_gift_listings%') -- popular gift ideas listing view, web
-  -- or boe_referrer like ('boe_gift_mode_gift_idea_listings%')-- persona listing view, boe
-  -- or boe_referrer like ('gift_mode_occasion%')-- occasion listing view, boe
-  -- or boe_referrer like ('boe_gift_mode_editors_picks_listings%'))-- occasion listing view, boe NEED TO CONFIRM
 )
 select
 	a._date
@@ -166,9 +164,8 @@ select
 	, a.region
 	, a.is_admin_visit
 	, a.top_channel
-	, a.persona_id
 	, sum(a.n_listing_views) as total_listing_views
-	, coalesce(count(case when (a.ref_tag like ('boe_gift_mode_gift_idea_listings%') or a.ref_tag like ('gm_gift_idea_listings%')) then a.visit_id end),0) as total_persona_page_listing_views
+	, coalesce(sum(case when (a.ref_tag like ('%gift_mode_%') or a.ref_tag like ('gm_%')) then a.n_listing_views end),0) as core_listing_views
 	, count(distinct a.listing_id) as unique_listings_viewed
 	, count(distinct transaction_id) as unique_transactions
 	, sum(a.purchased_after_view) as total_purchased_listings
