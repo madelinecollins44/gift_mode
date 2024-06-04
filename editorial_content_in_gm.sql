@@ -4,11 +4,11 @@
 -------------------------------------------------------------------------
 ----this this is correct way 
 with impressions as (
-select
+select -- get all deliveries 
 	date(_partitiontime) as _date
 	, visit_id
 	, sequence_number
-	, beacon.event_name as event_type
+	, beacon.event_name as event_name
 	-- , (select value from unnest(beacon.properties.key_value) where key = 'listing_ids') as listing_ids
 from
 	`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
@@ -22,6 +22,17 @@ where
   and b._date >= current_date-15
   and b.platform in ('mobile_web','desktop') 
 )
+, impressions_agg as (
+select
+  _date
+  , visit_id
+  , count(case when event_name in ('gift_mode_persona') then visit_id end) as persona_impressions
+  , count(case when event_name in ('gift_mode_occasions_page') then visit_id end) as occasion_impressions
+  , count(case when event_name in ('popular_gift_listings_delivered') then visit_id end) as home_impressions
+  , count(case when event_name in ('recommendations_module_delivered') then visit_id end) as gift_idea_impressions
+from impressions 
+group by all 
+)
 , listing_views as
 (select 
   _date
@@ -33,7 +44,7 @@ from
   `etsy-data-warehouse-prod`.analytics.listing_views lv
 where 
   lv.platform in ("desktop", "mobile_web") 
-  and (ref_tag like "gm_occasions_etsys_picks%" or ref_tag like ('gm_editorial_listings%')  or ref_tag like ('gm_popular_gift_listings%') or ref_tag like ('gm_popular_gift_listings%') or ref_tag like ('gm_gift_idea_listings%'))
+  and (ref_tag like "gm_occasions_etsys_picks%" or ref_tag like ('gm_editorial_listings%')  or ref_tag like ('gm_popular_gift_listings%') or ref_tag like ('gm_popular_gift_listings%') or ref_tag like ('gm_gift_idea_listings%') or ref_tag like ('gm_occasion_gift_idea_listings%'))
   and _date >= current_date-15
 group by all
 )
@@ -41,21 +52,23 @@ group by all
 select 
   _date 
   , visit_id 
-  , ref_tag
-  , sum(n_listing_views) as total_listing_views
+  , sum(case when ref_tag like ('gm_occasions_etsys_picks%') then n_listing_views end) as occasion_ep_views
+  , sum(case when ref_tag like ('gm_editorial_listings%') then n_listing_views end) as persona_ep_views
+  , sum(case when ref_tag like ('gm_popular_gift_listings%') then n_listing_views end) as home_ep_views
+  , sum(case when ref_tag like ('gm_gift_idea_listings%') or ref_tag like ('gm_occasion_gift_idea_listings%') then n_listing_views end) as gift_idea_views
 from listing_views
 group by all
 )
 select
-  count(case when a.event_type in ('gift_mode_occasions_page') then a.visit_id end) as occasion_impressions
-  , count(case when a.event_type in ('gift_mode_persona') then a.visit_id end) as persona_impressions
-  , count(case when a.event_type in ('gift_mode_home') then a.visit_id end) as home_impressions
-  , count(case when a.event_type in ('recommendations_module_delivered') then a.visit_id end) as gift_idea_impressions
-  , sum(case when b.ref_tag like ('gm_occasions_etsys_picks%') then b.total_listing_views end) as occasion_ep_views
-  , sum(case when b.ref_tag like ('gm_editorial_listings%') then b.total_listing_views end) as persona_ep_views
-  , sum(case when b.ref_tag like ('gm_popular_gift_listings%') then b.total_listing_views end) as home_ep_views
-  , sum(case when b.ref_tag like ('gm_gift_idea_listings%') or b.ref_tag like ('gm_gift_idea_listings%') then b.total_listing_views end) as gift_idea_views
-from impressions a
+  sum(persona_impressions) as persona_impressions
+  , sum(occasion_impressions) as occasion_impressions
+  , sum(home_impressions) as home_impressions
+  , sum(gift_idea_impressions) as gift_idea_impressions
+  , sum(occasion_ep_views) as occasion_ep_views
+  , sum(persona_ep_views) as persona_ep_views
+  , sum(home_ep_views) as home_ep_views
+  , sum(gift_idea_views) as gift_idea_views
+from impressions_agg a
 left join listing_views_agg b
   using (_date, visit_id) 
 
