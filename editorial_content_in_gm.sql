@@ -2,7 +2,6 @@
 --CLICK RATE OF EDITORIAL CONTENT ON GIFT MODE PAGES AT THE MODULE LEVEL
 --how do modules perform against non-ep modules?
 -------------------------------------------------------------------------
-
 with impressions as (
 select
 	date(_partitiontime) as _date
@@ -16,10 +15,10 @@ inner join
   etsy-data-warehouse-prod.weblog.visits b
     using (visit_id)
 where
-	date(_partitiontime) >= current_date-3
-  -- and (beacon.event_name in ('gift_mode_persona', 'gift_mode_occasions_page','popular_gift_listings_delivered') -- using primary pages bc ep delivery event on occasions page does not exist
-      and (beacon.event_name in ('recommendations_module_delivered') and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('%gift_mode_occasion_gift_idea_%') or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('%gift_mode_gift_idea_listings%')))
-  and b._date >= current_date-3
+	date(_partitiontime) >= current_date-30
+  and ((beacon.event_name in ('gift_mode_persona', 'gift_mode_occasions_page','popular_gift_listings_delivered') -- using primary pages bc ep delivery event on occasions page does not exist
+      or (beacon.event_name in ('recommendations_module_delivered') and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('%gift_mode_occasion_gift_idea_%') or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('%gift_mode_gift_idea_listings%')))))
+  and b._date >= current_date-30
   and b.platform in ('mobile_web','desktop') 
 )
 , clicks as (
@@ -34,7 +33,7 @@ select
 	from
 		`etsy-visit-pipe-prod`.canonical.visit_id_beacons
 	where 
-    date(_partitiontime) >= current_date-3
+    date(_partitiontime) >= current_date-30
 	  and beacon.event_name in ('view_listing')
     and (regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_editorial_listings%') -- persona page ep clicks
         or regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_occasions_etsys_picks%')
@@ -50,13 +49,12 @@ select
   , count(case when a.event_name in ('popular_gift_listings_delivered') then a.visit_id end) as ep_home_impressions
   , count(case when b.ref_tag_clean in ('gm_popular_gift_listings') then b.visit_id end)  as ep_home_clicks
     , count(case when a.event_name in ('recommendations_module_delivered') then a.visit_id end) as non_ep_impressions
-  , count(case when b.ref_tag_clean in ('gm_occasion_gift_idea_listings','gm_gift_idea_listings') then b.visit_id end)  as non_ep_home_clicks
+  , count(case when b.ref_tag_clean in ('gm_occasion_gift_idea_listings','gm_gift_idea_listings') then b.visit_id end)  as non_ep_clicks
 from 
   impressions a
 left join 
   clicks b
     using (_date, visit_id)
-
 
 --------------------------------------------------------------------------------------------------------------------------------------------------
 --CLICK RATE OF STASH LISTINGS VS OTHER LISTINGS
