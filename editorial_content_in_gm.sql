@@ -192,7 +192,9 @@ select
 	sum(a.deliveries) as deliveries
 	, sum(b.views) as views
 	, sum(case when c.listing_id is not null then a.deliveries end) as stash_deliveries
-	, sum(case when c.listing_id is not null then b.views end) as stash_views
+	, sum(case when c.listing_id is not null then b.views end) as stash_views	
+	, sum(case when c.listing_id is null then a.deliveries end) as non_stash_deliveries
+	, sum(case when c.listing_id is null then b.views end) as non_stash_views
 from 
 	clean_deliveries a
 left join 
