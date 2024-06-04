@@ -131,51 +131,46 @@ left join
 --CLICK RATE OF STASH LISTINGS VS OTHER LISTINGS
 -- looking at the listings delivered in gift ideas, do stash listings perform better than other listings?
 --------------------------------------------------------------------------------------------------------------------------------------------------
-with get_stash_listings as ( -- get all stash listings
-select 
-  distinct l.listing_id,
-from 
-  `etsy-data-warehouse-prod`.listing_mart.listings as l
-left outer join 
-  `etsy-data-warehouse-prod`.etsy_shard.merch_listings m
-    using (listing_id)
-where  
-  m.status = 0
-  and l.is_active = 1
-), all_gift_idea_deliveries as ( -- get all listings delivered in gift idea modules 
+-- create or replace table etsy-data-warehouse-dev.madelinecollins.active_stash_listings as ( -- get all stash listings
+-- select 
+--   distinct l.listing_id,
+-- from 
+--   `etsy-data-warehouse-prod`.listing_mart.listings as l
+-- left outer join 
+--   `etsy-data-warehouse-prod`.etsy_shard.merch_listings m
+--     using (listing_id)
+-- where  
+--   m.status = 0
+--   and l.is_active = 1
+-- );
+
+with all_gift_idea_deliveries as ( -- gg
 	select
-		date(_partitiontime) as _date
-		, visit_id
-		, sequence_number
-		, beacon.event_name as event_name
-		, (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
-    , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean
-    , (select value from unnest(beacon.properties.key_value) where key = "listing_ids") as listing_ids
+  date(_partitiontime) as _date
+  , visit_id
+  , (select value from unnest(beacon.properties.key_value) where key = "listing_ids") as listing_ids
 	from
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons`
 	where date(_partitiontime) >= current_date-15
 	  and beacon.event_name = "recommendations_module_delivered"
-	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%") -- mweb/ desktop occasions
-        or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%") -- mweb/ desktop personas
+	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%") 
+        or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%")
 ))
 , clean_deliveries as ( -- clean up gift idea listing delivery
 select 
   a._date 
-  , a.visit_id
   , listing_id
+  , count(visit_id) as deliveries 
 from 
   all_gift_idea_deliveries a
 cross join 
    unnest(split(listing_ids, ',')) as listing_id
+group by all 
 )
 , ref_tags as ( -- get listings that have a gift_idea related ref tag
 select
   date(a._partitiontime) as _date
   , a.visit_id
-  , a.sequence_number
-  , beacon.event_name as event_name
-	, regexp_substr(beacon.loc, 'ref=([^*&?%]+)') as ref_tag
-  , split(regexp_substr(beacon.loc, 'ref=([^*&?%]+)'), "-")[safe_offset(0)] as ref_tag_clean    
   , (select value from unnest(beacon.properties.key_value) where key = "listing_id") as listing_id
 from 
   `etsy-visit-pipe-prod.canonical.visit_id_beacons`a
@@ -185,16 +180,24 @@ where
        or regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_gift_idea_listings%')) -- comes from gift mode 
   and date(_partitiontime) >= current_date-15
 )
+, ref_tags_agg as (
 select 
-	count(a.listing_id) as listing_impression
-	, count(b.listing_id) as listing_click
-	, count(case when c.listing_id is not null then a.listing_id end) as stash_listing_impression
-	, count(case when c.listing_id is not null then b.listing_id end) as stash_listing_click
+   _date
+  , listing_id
+  , count(visit_id) as views 
+from ref_tags
+group by all 
+)
+select 
+	sum(a.deliveries) as deliveries
+	, sum(b.views) as views
+	, sum(case when c.listing_id is not null then a.deliveries end) as stash_deliveries
+	, sum(case when c.listing_id is not null then b.views end) as stash_views
 from 
 	clean_deliveries a
 left join 
-	ref_tags b
-		using (visit_id, listing_id, _date)
+	ref_tags_agg b
+		using (listing_id, _date)
 left join 
-	get_stash_listings c 
+	etsy-data-warehouse-dev.madelinecollins.active_stash_listings c 
 		on a.listing_id=cast(c.listing_id as string)
