@@ -2,6 +2,10 @@
 --CLICK RATE OF EDITORIAL CONTENT ON GIFT MODE PAGES AT THE MODULE LEVEL
 --how doep modules perform against non-ep modules?
 -------------------------------------------------------------------------
+-------------------------------------------------------------------------
+--CLICK RATE OF EDITORIAL CONTENT ON GIFT MODE PAGES AT THE MODULE LEVEL
+--how doep modules perform against non-ep modules?
+-------------------------------------------------------------------------
 with impressions as (
 select
 	date(_partitiontime) as _date
@@ -14,8 +18,7 @@ from
 where
 	date(_partitiontime) >= current_date-2
 and
-	beacon.event_name in ('persona_editorial_listings_delivered' -- persona page etsy picks
-                        , 'gift_occasion_etsys_picks_delivered') -- persona page etsy picks
+	beacon.event_name in ('gift_mode_persona', 'gift_mode_occasions_page') -- using primary pages bc ep delivery event on occasions page does not exist 
 )
 , clicks as (
 select
@@ -35,14 +38,15 @@ select
         or regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_occasions_etsys_picks%')) -- occasion page ep clicks 
 )
 select
-  count(case when b.ref_tag in ('gm_editorial_listings') then b.visit_id end)/ count(case when a.event_name in ('persona_editorial_listings_delivered') then a.visit_id end) as ep_persona_click_rate
-  , count(case when b.ref_tag in ('gift_occasion_etsys_picks_delivered') then b.visit_id end)/ count(case when a.event_name in ('gm_occasions_etsys_picks') then a.visit_id end) as ep_occasion_click_rate
+  count(case when b.ref_tag_clean in ('gm_editorial_listings') then b.visit_id end) as ep_persona_clicks
+  , count(case when a.event_name in ('gift_mode_persona') then a.visit_id end) as ep_persona_impressions
+  , count(case when b.ref_tag_clean in ('gift_occasion_etsys_picks_delivered') then b.visit_id end)  as ep_occasion_clicks
+  , count(case when a.event_name in ('gift_mode_occasions_page') then a.visit_id end) as ep_occasion_impressions
 from 
   impressions a
 left join 
   clicks b
     using (_date, visit_id)
-
 --------------------------------------------------------------------------------------------------------------------------------------------------
 --CLICK RATE OF STASH LISTINGS VS OTHER LISTINGS
 -- looking at the listings delivered in gift ideas, do stash listings perform better than other listings?
