@@ -118,7 +118,7 @@ left join
 --CLICK RATE OF STASH LISTINGS VS OTHER LISTINGS
 -- looking at the listings delivered in gift ideas, do stash listings perform better than other listings?
 --------------------------------------------------------------------------------------------------------------------------------------------------
-with get_stash_listings as (
+with get_stash_listings as ( -- get all stash listings
 select 
   distinct l.listing_id,
 from 
@@ -140,7 +140,7 @@ where
     , (select value from unnest(beacon.properties.key_value) where key = "listing_ids") as listing_ids
 	from
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons`
-	where date(_partitiontime) >= current_date-3
+	where date(_partitiontime) >= current_date-15
 	  and beacon.event_name = "recommendations_module_delivered"
 	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%") -- mweb/ desktop occasions
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%") -- mweb/ desktop personas
@@ -170,7 +170,7 @@ where
   beacon.event_name in ('view_listing')
   and (regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_occasion_gift_idea_listings%')
        or regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_gift_idea_listings%')) -- comes from gift mode 
-  and date(_partitiontime) >= current_date-3
+  and date(_partitiontime) >= current_date-15
 )
 select 
 	count(a.listing_id) as listing_impression
@@ -185,5 +185,3 @@ left join
 left join 
 	get_stash_listings c 
 		on a.listing_id=cast(c.listing_id as string)
-
-
