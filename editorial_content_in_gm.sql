@@ -2,6 +2,64 @@
 --CLICK RATE OF EDITORIAL CONTENT ON GIFT MODE PAGES AT THE MODULE LEVEL
 --how do modules perform against non-ep modules?
 -------------------------------------------------------------------------
+----this this is correct way 
+with impressions as (
+select
+	date(_partitiontime) as _date
+	, visit_id
+	, sequence_number
+	, beacon.event_name as event_type
+	-- , (select value from unnest(beacon.properties.key_value) where key = 'listing_ids') as listing_ids
+from
+	`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
+inner join  
+  etsy-data-warehouse-prod.weblog.visits b
+    using (visit_id)
+where
+	date(_partitiontime) >= current_date-15
+  and ((beacon.event_name in ('gift_mode_persona', 'gift_mode_occasions_page','popular_gift_listings_delivered') -- using primary pages bc ep delivery event on occasions page does not exist
+      or (beacon.event_name in ('recommendations_module_delivered') and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('gift_mode_occasion_gift_idea_%') or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('gift_mode_gift_idea_listings%')))))
+  and b._date >= current_date-15
+  and b.platform in ('mobile_web','desktop') 
+)
+, listing_views as
+(select 
+  _date
+  , visit_id
+  , listing_id
+  , ref_tag
+  , count(*) as n_listing_views
+from 
+  `etsy-data-warehouse-prod`.analytics.listing_views lv
+where 
+  lv.platform in ("desktop", "mobile_web") 
+  and (ref_tag like "gm_occasions_etsys_picks%" or ref_tag like ('gm_editorial_listings%')  or ref_tag like ('gm_popular_gift_listings%') or ref_tag like ('gm_popular_gift_listings%') or ref_tag like ('gm_gift_idea_listings%'))
+  and _date >= current_date-15
+group by all
+)
+, listing_views_agg as (
+select 
+  _date 
+  , visit_id 
+  , ref_tag
+  , sum(n_listing_views) as total_listing_views
+from listing_views
+group by all
+)
+select
+  count(case when a.event_type in ('gift_mode_occasions_page') then a.visit_id end) as occasion_impressions
+  , count(case when a.event_type in ('gift_mode_persona') then a.visit_id end) as persona_impressions
+  , count(case when a.event_type in ('gift_mode_home') then a.visit_id end) as home_impressions
+  , count(case when a.event_type in ('recommendations_module_delivered') then a.visit_id end) as gift_idea_impressions
+  , sum(case when b.ref_tag like ('gm_occasions_etsys_picks%') then b.total_listing_views end) as occasion_ep_views
+  , sum(case when b.ref_tag like ('gm_editorial_listings%') then b.total_listing_views end) as persona_ep_views
+  , sum(case when b.ref_tag like ('gm_popular_gift_listings%') then b.total_listing_views end) as home_ep_views
+  , sum(case when b.ref_tag like ('gm_gift_idea_listings%') or b.ref_tag like ('gm_gift_idea_listings%') then b.total_listing_views end) as gift_idea_views
+from impressions a
+left join listing_views_agg b
+  using (_date, visit_id) 
+
+	---ignore below
 with impressions as (
 select
 	date(_partitiontime) as _date
