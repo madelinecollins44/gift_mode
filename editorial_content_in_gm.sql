@@ -1,5 +1,6 @@
 -------------------------------------------------------------------------
 --CLICK RATE OF EDITORIAL CONTENT ON GIFT MODE PAGES AT THE MODULE LEVEL
+--how doep modules perform against non-ep modules?
 -------------------------------------------------------------------------
 with impressions as (
 select
@@ -43,6 +44,7 @@ left join
     using (_date, visit_id)
 
 --------------------------------------------------------------------------------------------------------------------------------------------------
---CLICK RATE OF EDITORIAL CONTENT ON GIFT MODE PAGES AT THE LISTING LEVEL (TO FIND CLICK RATE OF STASH LISTINGS VS OTHER LISTINGS)
+--CLICK RATE OF STASH LISTINGS VS OTHER LISTINGS
+-- looking at the listings delivered in gift ideas, do stash listings perform better than other listings?
 --------------------------------------------------------------------------------------------------------------------------------------------------
 
