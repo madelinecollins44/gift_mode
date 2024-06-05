@@ -196,15 +196,28 @@ select
 	, coalesce(sum(b.trans_gms_net),0) as attr_gms
 from agg a
 left join listing_gms b
-  using (listing_id)
+    on a._date = b._date
+	  and a.platform = b.platform
+	  and a.visit_id = b.visit_id
+	  and a.listing_id = b.listing_id
+	  and a.purchased_after_view > 0
 );
 
 ------------------------------------
 --all together 
 ------------------------------------
 select
-  as visits_with_gm_impression
- as total_impressions
+	a._date  
+	, a.platform 
+  , a.browser_platform 
+	, a.region  
+  , a.admin 
+  , a.top_channel 
+  , coalesce(visits) as total_gm_visits
+  , coalesce(impressions) as total_gm_impressions
+  , coalesce(core_visits,0) as core_gm_visits
+  , coalesce(core_impressions,0) as core_gm_impressions
+  a
  as visits_with_gm_click
  as total_gm_clicks
  as visits_with_gm_listing_view
