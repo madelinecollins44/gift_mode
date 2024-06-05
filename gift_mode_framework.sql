@@ -20,12 +20,14 @@ create or replace temporary table visits as (
         and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') in ('lp_suggested_personas_related','homescreen_gift_mode_personas')) --related personas module on listing page, web AND app home popular personas module delivered, boe
         or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%') --Featured personas on hub, web
             or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%') --Featured personas on hub, web
-    or (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%')
+    or (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%') or  beacon.event_name like ('market_gift_personas_%')
     ------various ingresses + banners 
     -- ('gift_mode_shop_by_occasions_module_seen' --shop by occasion module on homepage, web
     -- , 'gm_gift_page_ingress_loaded' -- gift mode promo banner on gift category page, web
     -- , 'search_gift_mode_banner_seen' -- gift mode promo banner on search page, web
     -- , 'gm_hp_banner_loaded_seen' --homepage banner, web
+    -- , 'market_gift_personas_query_related'-- Related personas module on market page, web
+    -- , 'market_gift_personas_popular'-- popular personas module on market page, web
     -- , 'search_gift_mode_banner_seen'-- bottom of search page for gift queries, web
     -- , 'gift_mode_introduction_modal_shown' --Gift Mode introduction overlay shown on homescreen, boe
     --  ------core visits 
@@ -74,14 +76,34 @@ from
 	`etsy-data-warehouse-prod`.weblog.events e 
 where 
 	_date >= last_date
-  and (ref_tag in ('hp_gm_shop_by_occasion_module' -- Shop by occasion on homepage, web
-	    , 'listing_suggested_personas_related' --Related personas module/ personas variant, web
-	    , 'hub_GiftMode' --Gift Teaser promo banner on hub, web
-      , 'GiftTeaser_MDAY24_Skinny_Sitewide')) -- Skinny Banner (Mother's Day), web
-	or (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%')-- Onsite Promo Banner (Mother's Day/ Father's Day), web
-      or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%'))-- Onsite Promo Banner (Mother's Day/ Father's Day), web
+  and (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
+      or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
+      or ref_tag like ('gm%') -- mostly everything else 
+      or ref_tag like ('%GiftMode%') --Gift Teaser promo banner on hub, web
+      or ref_tag like ('hp_gm%') -- Shop by occasion on homepage, web
+      or ref_tag like ('GiftTeaser%')) -- Skinny Banner (Mother's Day), web
 )
---how do i want to agg these? do i want to break it down by core vs all gift mode visits? 
+select
+  count(visit_id) as clicks
+  , count(distinct visit_id) as unique_visits_with_a_click
+from get_refs
+);
+    --banners + other ingresses
+    --   'hp_gm_shop_by_occasion_module' -- Shop by occasion on homepage, web
+	  --   , 'listing_suggested_personas_related' --Related personas module/ personas variant, web
+	  --   , 'hub_GiftMode' --Gift Teaser promo banner on hub, web
+    --   , 'GiftTeaser_MDAY24_Skinny_Sitewide' -- Skinny Banner (Mother's Day), web
+    --   , 'gm_market_personas_query_related' --Related personas module on market page, web
+    --   , 'gm_market_personas_popular'--popular personas module on market page, web
+    --   , 'gm-hp-banner' -- hampage banner gift mode ingress clicked, web
+    --   --ref tags on core pages
+    --   , 'gm_popular_personas' --Popular gift ideas persona card clicked from gift mode home, web
+    --   , 'gm_popular_gift_listings' --Popular gifts listing card clicked from gift mode home, 
+    --   , 'gm-global-nav'-- Global nav item with text on web
+    -- -- 'like' ref tags from banners + ingresses
+	  --   or (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%')-- Onsite Promo Banner (Mother's Day/ Father's Day), web
+    --   or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%')-- Onsite Promo Banner (Mother's Day/ Father's Day), web
+    --   or ref_tag like ('gm-hp-banner-persona%') -- persona card on homepage banner clicked, web
 
 ------------------------------------
 --LISTING VIEWS 
@@ -122,7 +144,7 @@ from
 where 
 	_date >= current_date-2
 	and event_type = "view_listing"
-  and ((ref_tag like ('gm_%') or ref_tag like ('gift_mode_%')) -- find ref tags of non-core visits 
+  and ((ref_tag like ('gm_%')) -- find ref tags of non-core visits 
       or boe_referrer like ('boe_gift_mode%')) 
   -- and (ref_tag like ('gm_gift_idea_listings%') -- persona listing view, web
   -- or ref_tag like ('gm_occasion_gift_idea_listings-%') -- occasion listing view, web
@@ -166,13 +188,45 @@ select
 	, a.is_admin_visit
 	, a.top_channel
 	, sum(a.n_listing_views) as total_listing_views
-	, coalesce(sum(case when (a.ref_tag like ('%gift_mode_%') or a.ref_tag like ('gm_%')) then a.n_listing_views end),0) as core_listing_views
+	, coalesce(sum(case when a.ref_tag like ('gm%') then a.n_listing_views end),0) as core_listing_views
 	, count(distinct a.listing_id) as unique_listings_viewed
+  , count(distinct case when a.ref_tag like ('gm%') a.listing_id end) as unique_core_listings_viewed
 	, count(distinct transaction_id) as unique_transactions
 	, sum(a.purchased_after_view) as total_purchased_listings
 	, coalesce(sum(b.trans_gms_net),0) as attr_gms
 from agg a
 left join listing_gms b
+  using (listing_id)
 );
 
+------------------------------------
+--all together 
+------------------------------------
+select
+  as visits_with_gm_impression
+ as total_impressions
+ as visits_with_gm_click
+ as total_gm_clicks
+ as visits_with_gm_listing_view
+ as total_gm_listing_views
+ as visits_with_core_gm_listing_view
+ as total_core_gm_listing_views
+ as visits_with_gm_purchase
+, as visits_with_core_gm_purchase
+ as listings_purchased
+, as listings_purchased_from_core_gms
+from 
+  visits a
+left join 
+  clicks b
+    using (visit_id, _date)
+left join 
+  listing_views c
+    on a._date=c._date
+    and a.visit_id=c.visit_id
+    and a.platform=c.platform
+    and a.browser_platform=c.browser_platform
+    and a.region=c.region
+    and a.admin=c.admin
+    and a.top_channel=c.top_channel
 end
