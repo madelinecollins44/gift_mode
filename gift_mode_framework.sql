@@ -52,12 +52,11 @@ create or replace temporary table visits as (
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
 	where 
     date(_partitiontime) >= last_date
-	  and (((beacon.event_name = 'recommendations_module_delivered' 
-        and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') in ('lp_suggested_personas_related','homescreen_gift_mode_personas'))) --related personas module on listing page, web AND app home popular personas module delivered, boe
-        or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%') --Featured personas on hub, web
-            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%') --Featured personas on hub, web
-            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas_-%') --realted/ popular persona module on market page, web
-    or (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%')))
+    and (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%')
+	      or (beacon.event_name = 'recommendations_module_delivered' 
+            and (select value from unnest(beacon.properties.key_value) where key = 'module_placement') in     ('lp_suggested_personas_related','homescreen_gift_mode_personas') --related personas module on listing page, web AND app home popular personas module delivered, boe
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%')--Featured personas on hub, web
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas_-%')))--realted/ popular persona module on market page, web
 )
 select 
 	b._date  
@@ -68,8 +67,8 @@ select
   , a.top_channel 
   , visit_id
   , count(visit_id) as impressions
-  , max(case when event_name in ('gift_mode_home','gift_mode_persona','gift_mode_occasions_page','gift_mode_browse_all_personas','gift_mode_see_all_personas','gift_mode_results','gift_mode_quiz_results') then 1 else 0 end) as core_visits
-    , count(case when event_name in ('gift_mode_home','gift_mode_persona','gift_mode_occasions_page','gift_mode_browse_all_personas','gift_mode_see_all_personas','gift_mode_results','gift_mode_quiz_results') then visit_id end) as core_impressions
+  , max(case when event_name like ('gift_mode%') then 1 else 0 end) as core_visits
+  , count(case when event_name like ('gift_mode%') then visit_id end) as core_impressions
 from 
   etsy-data-warehouse-prod.weblog.visits a
 inner join 
