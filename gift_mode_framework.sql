@@ -1,9 +1,45 @@
 ---can i make a temp table with all necessary events and update there instead of inquery as more events are added?
 begin
 
-------------------------------------------------------------------------------------------------------------
---VISITS AND IMPRESSIONS: this table grabs visits across gift mode related content and core gift mode pages 
-------------------------------------------------------------------------------------------------------------
+declare last_date date;
+
+drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis`;
+
+create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis` (
+  	_date DATE
+	, platform STRING
+  , browser_platform STRING
+	, region  STRING
+  , admin int64
+  , top_channel STRING
+  , total_gm_visits int64
+  , total_gm_impressions int64
+  , core_gm_visits int64
+  , core_gm_impressions int64
+  , visits_with_gm_click int64
+  , total_gm_clicks int64
+  , unique_visits_with_purchase int64
+  , unique_visits_with_core_purchase int64
+  , total_listing_views int64
+  , total_core_listing_views int64
+  , listings_viewed int64
+  , core_listings_viewed int64
+  , visits_with_core_listing_view int64
+  , total_purchased_listings int64
+  , total_purchased_core_listings int64
+ 	, unique_transactions int64
+	, attr_gms NUMERIC 
+);
+
+-- in case of day 1, backfill for 30 days
+-- set last_date= (select max(_date) from `etsy-data-warehouse-prod.rollups.gift_mode_gift_idea_stats`);
+--  if last_date is null then set last_date= (select min(_date)-1 from `etsy-data-warehouse-prod.weblog.events`);
+--  end if;
+
+set last_date= current_date - 1;
+
+
+--this table grabs visits across gift mode related content and core gift mode pages 
 create or replace temporary table visits as (
   with get_recmods_events as (
   select
@@ -15,7 +51,7 @@ create or replace temporary table visits as (
 	from
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
 	where 
-    date(_partitiontime) >= current_date-2
+    date(_partitiontime) >= last_date
 	  and (((beacon.event_name = 'recommendations_module_delivered' 
         and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') in ('lp_suggested_personas_related','homescreen_gift_mode_personas'))) --related personas module on listing page, web AND app home popular personas module delivered, boe
         or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%') --Featured personas on hub, web
@@ -39,13 +75,11 @@ inner join
   get_recmods_events b 
     using (_date, visit_id)
 where 
-  a._date >= current_date-2
+  a._date >= last_date
 group by all
 );
 
-------------------------------------
---CLICKS
-------------------------------------		
+--this table looks at visits with gift_mode specific ref_tags		
 create or replace temporary table clicks as (
 with get_refs as (
 select 
@@ -57,7 +91,7 @@ select
 from 
 	`etsy-data-warehouse-prod`.weblog.events e 
 where 
-	_date >= current_date-1
+	_date >= last_date
   and (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
       or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
       or ref_tag like ('gm%') -- mostly everything else 
@@ -89,9 +123,7 @@ group by all
     --   or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%')-- Onsite Promo Banner (Mother's Day/ Father's Day), web
     --   or ref_tag like ('gm-hp-banner-persona%') -- persona card on homepage banner clicked, web
 
-------------------------------------
---LISTING VIEWS 
-------------------------------------
+--this table looks at all gift mode related listing views + purchases 
 create or replace temporary table listing_gms as (
 select
 	tv.date as _date
@@ -110,7 +142,7 @@ join
 on
 	tv.transaction_id = t.transaction_id
 where
-	tv.date >= current_date-2
+	tv.date >= last_date
 )
 ;
 
@@ -126,7 +158,7 @@ select
 from 
 	`etsy-data-warehouse-prod`.weblog.events e 
 where 
-	_date >= current_date-2
+	_date >= last_date
 	and event_type = "view_listing"
   and ((ref_tag like ('gm_%')) -- find ref tags of non-core visits 
       or referrer like ('boe_gift_mode%')) 
@@ -159,7 +191,7 @@ left join
     and a._date=c._date
     and a.sequence_number=a.sequence_number 
 where 
-  b._date >= current_date-2
+  b._date >= last_date
 group by all
 )
 select
@@ -188,7 +220,7 @@ group by all
 ------------------------------------
 --all together 
 ------------------------------------
-create or replace temporary table all_together as (
+insert into `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis` (
 select
 	a._date  
 	, a.platform 
@@ -200,9 +232,9 @@ select
   , coalesce(sum(a.impressions),0) as total_gm_impressions
   , coalesce(sum(a.core_visits),0) as core_gm_visits
   , coalesce(sum(a.core_impressions),0) as core_gm_impressions
-  , coalesce(count(distinct b.visit_id),0) visits_with_gm_click
-  , coalesce(sum(b.clicks),0) as total_gm_clicks
-  , coalesce(count(distinct case when visit_with_purchase>0 then c.visit_id end),0) as unique_visits_with_core_purchase
+  , count(distinct b.visit_id) visits_with_gm_click
+  , sum(b.clicks) as total_gm_clicks
+  , coalesce(count(distinct case when visit_with_purchase>0 then c.visit_id end),0) as unique_visits_with_purchase
   , coalesce(count(distinct case when visit_with_core_purchase>0 then c.visit_id end),0) as unique_visits_with_core_purchase
   , coalesce(sum(c.total_listing_views),0) as total_listing_views
   , coalesce(sum(c.total_core_listing_views),0) as total_core_listing_views
@@ -222,11 +254,6 @@ left join
   listing_views c
     on a._date=c._date
     and a.visit_id=c.visit_id
-    and a.platform=c.platform
-    and a.browser_platform=c.browser_platform
-    and a.region=c.region
-    and a.admin=c.admin
-    and a.top_channel=c.top_channel
 group by all
 );
 
