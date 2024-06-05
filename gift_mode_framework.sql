@@ -17,10 +17,10 @@ create or replace temporary table visits as (
 	where 
     date(_partitiontime) >= current_date-2
 	  and ((beacon.event_name = 'recommendations_module_delivered' 
-        and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') in ('lp_suggested_personas_related','homescreen_gift_mode_personas')) --related personas module on listing page, web AND app home popular personas module delivered, boe
+        and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') in ('lp_suggested_personas_related','homescreen_gift_mode_personas'))) --related personas module on listing page, web AND app home popular personas module delivered, boe
         or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%') --Featured personas on hub, web
-            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%') --Featured personas on hub, web
-    or (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%') or  beacon.event_name like ('market_gift_personas_%')
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%')) --Featured personas on hub, web
+    or (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%') or  beacon.event_name like ('market_gift_personas_%'))
     ------various ingresses + banners 
     -- ('gift_mode_shop_by_occasions_module_seen' --shop by occasion module on homepage, web
     -- , 'gm_gift_page_ingress_loaded' -- gift mode promo banner on gift category page, web
@@ -46,7 +46,7 @@ select
 	, a.region  
   , a.is_admin_visit as admin 
   , a.top_channel 
-  , count(distinct visit_id) as visits
+  , visit_id
   , count(visit_id) as impressions
   , count(distinct case when event_name in ('gift_mode_home','gift_mode_persona','gift_mode_occasions_page','gift_mode_browse_all_personas','gift_mode_see_all_personas','gift_mode_results','gift_mode_quiz_results') then visit_id end) as core_visits
     , count(case when event_name in ('gift_mode_home','gift_mode_persona','gift_mode_occasions_page','gift_mode_browse_all_personas','gift_mode_see_all_personas','gift_mode_results','gift_mode_quiz_results') then visit_id end) as core_impressions
@@ -58,7 +58,6 @@ inner join
 where 
   a._date >= current_date-2
 group by all 
-)
 );
 
 ------------------------------------
@@ -75,7 +74,7 @@ select
 from 
 	`etsy-data-warehouse-prod`.weblog.events e 
 where 
-	_date >= last_date
+	_date >= current_date-1
   and (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
       or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
       or ref_tag like ('gm%') -- mostly everything else 
@@ -84,9 +83,11 @@ where
       or ref_tag like ('GiftTeaser%')) -- Skinny Banner (Mother's Day), web
 )
 select
-  count(visit_id) as clicks
-  , count(distinct visit_id) as unique_visits_with_a_click
+	_date 
+	, visit_id 
+  , count(visit_id) as clicks
 from get_refs
+group by all 
 );
     --banners + other ingresses
     --   'hp_gm_shop_by_occasion_module' -- Shop by occasion on homepage, web
@@ -188,11 +189,16 @@ select
 	, a.is_admin_visit
 	, a.top_channel
 	, sum(a.n_listing_views) as total_listing_views
+  , count(distinct a.visit_id) as visits_with_listing_view
+  , coalesce(count(distinct case when a.ref_tag like ('gm%') then a.visit_id end),0) as visits_with_core_listing_view
 	, coalesce(sum(case when a.ref_tag like ('gm%') then a.n_listing_views end),0) as core_listing_views
 	, count(distinct a.listing_id) as unique_listings_viewed
-  , count(distinct case when a.ref_tag like ('gm%') a.listing_id end) as unique_core_listings_viewed
+  , count(distinct case when a.ref_tag like ('gm%') then a.listing_id end) as unique_core_listings_viewed
+  , count(distinct b.visit_id) as unique_visits_with_a_purchase
+  , count(distinct case when a.ref_tag like ('gm%') then b.visit_id end) as unique_visits_with_a_core_purchase
 	, count(distinct transaction_id) as unique_transactions
 	, sum(a.purchased_after_view) as total_purchased_listings
+  , sum(case when when a.ref_tag like ('gm%') then a.purchased_after_view end) as total_purchased_core_listings
 	, coalesce(sum(b.trans_gms_net),0) as attr_gms
 from agg a
 left join listing_gms b
@@ -206,6 +212,7 @@ left join listing_gms b
 ------------------------------------
 --all together 
 ------------------------------------
+create or replace temporary table as all_together as (
 select
 	a._date  
 	, a.platform 
@@ -213,21 +220,23 @@ select
 	, a.region  
   , a.admin 
   , a.top_channel 
-  , coalesce(visits) as total_gm_visits
-  , coalesce(impressions) as total_gm_impressions
-  , coalesce(core_visits,0) as core_gm_visits
-  , coalesce(core_impressions,0) as core_gm_impressions
-  a
- as visits_with_gm_click
- as total_gm_clicks
- as visits_with_gm_listing_view
- as total_gm_listing_views
- as visits_with_core_gm_listing_view
- as total_core_gm_listing_views
- as visits_with_gm_purchase
-, as visits_with_core_gm_purchase
- as listings_purchased
-, as listings_purchased_from_core_gms
+  , count(distinct a.visit_id,0) as total_gm_visits
+  , coalesce(sum(a.impressions),0) as total_gm_impressions
+  , coalesce(sum(a.core_visits),0) as core_gm_visits
+  , coalesce(sum(a.core_impressions),0) as core_gm_impressions
+  , coalesce(count(distinct b.visit_id),0) visits_with_gm_click
+  , coalesce(sum(b.clicks),0) total_gm_clicks
+  , coalesce(visits_with_listing_view,0) as visits_with_listing_view
+  , coalesce(visits_with_core_listing_view,0) as visits_with_core_listing_view
+	, coalesce(total_listing_views,0) as total_listing_views
+	, coalesce(core_listing_views,0) as total_core_listing_views
+	, coalesce(unique_listings_viewed,0) as unique_listings_viewed
+  , coalesce(unique_core_listings_viewed,0) as unique_core_listings_viewed
+  , coalesce(unique_visits_with_a_purchase,0) as unique_visits_with_a_purchase
+  , coalesce(unique_visits_with_a_core_purchase,0) as unique_visits_with_a_core_purchase
+  , coalesce(unique_transactions,0) as unique_transactions
+  , coalesce(total_purchased_core_listings,0) as total_purchased_core_listings
+	, coalesce(total_purchased_listings,0) as total_purchased_listings
 from 
   visits a
 left join 
@@ -242,4 +251,7 @@ left join
     and a.region=c.region
     and a.admin=c.admin
     and a.top_channel=c.top_channel
+group by all
+);
+
 end
