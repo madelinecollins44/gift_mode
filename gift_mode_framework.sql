@@ -67,7 +67,7 @@ select
   , a.top_channel 
   , visit_id
   , count(visit_id) as impressions
-  , max(case when event_name in ('gift_mode_home','gift_mode_persona','gift_mode_occasions_page','gift_mode_browse_all_personas','gift_mode_see_all_personas','gift_mode_results','gift_mode_quiz_results') then 1 else 0 end) as core_visit
+  , max(case when event_name in ('gift_mode_home','gift_mode_persona','gift_mode_occasions_page','gift_mode_browse_all_personas','gift_mode_see_all_personas','gift_mode_results','gift_mode_quiz_results') then 1 else 0 end) as core_visits
     , count(case when event_name in ('gift_mode_home','gift_mode_persona','gift_mode_occasions_page','gift_mode_browse_all_personas','gift_mode_see_all_personas','gift_mode_results','gift_mode_quiz_results') then visit_id end) as core_impressions
 from 
   etsy-data-warehouse-prod.weblog.visits a
@@ -160,7 +160,7 @@ from
 where 
 	_date >= last_date
 	and event_type = "view_listing"
-  and ((ref_tag like ('gm_%')) -- find ref tags of non-core visits 
+  and ((ref_tag like ('gm_%') or ref_tag like ('listing_suggested_persona_listings_related%')) --believe this is the only listing ref tag non-core related
       or referrer like ('boe_gift_mode%')) 
   -- and (ref_tag like ('gm_gift_idea_listings%') -- persona listing view, web
   -- or ref_tag like ('gm_occasion_gift_idea_listings-%') -- occasion listing view, web
@@ -228,23 +228,23 @@ select
 	, a.region  
   , a.admin 
   , a.top_channel 
-  , count(distinct a.visit_id,0) as total_gm_visits
-  , coalesce(sum(a.impressions),0) as total_gm_impressions
-  , coalesce(sum(a.core_visits),0) as core_gm_visits
-  , coalesce(sum(a.core_impressions),0) as core_gm_impressions
+  , count(distinct a.visit_id) as total_gm_visits
+  , sum(a.impressions) as total_gm_impressions
+  , sum(a.core_visits) as core_gm_visits
+  , sum(a.core_impressions) as core_gm_impressions
   , count(distinct b.visit_id) visits_with_gm_click
   , sum(b.clicks) as total_gm_clicks
-  , coalesce(count(distinct case when visit_with_purchase>0 then c.visit_id end),0) as unique_visits_with_purchase
-  , coalesce(count(distinct case when visit_with_core_purchase>0 then c.visit_id end),0) as unique_visits_with_core_purchase
+  , coalesce(count(distinct case when c.visit_with_purchase>0 then c.visit_id end),0) as unique_visits_with_purchase
+  , coalesce(count(distinct case when c.visit_with_core_purchase>0 then c.visit_id end),0) as unique_visits_with_core_purchase
   , coalesce(sum(c.total_listing_views),0) as total_listing_views
   , coalesce(sum(c.total_core_listing_views),0) as total_core_listing_views
-  , coalesce(sum(c.listing_id),0) as listings_viewed
+  , coalesce(sum(c.listings_viewed),0) as listings_viewed
   , coalesce(sum(c.core_listings_viewed),0) as core_listings_viewed
-  , coalesce(sum(visit_with_core_listing_view),0) as visits_with_core_listing_view
-  , coalesce(sum(a.total_purchased_listings),0) as total_purchased_listings
-  , coalesce(sum(total_purchased_core_listings),0) as total_purchased_core_listings
- 	, coalesce(sum(unique_transactions),0) as unique_transactions
-	, coalesce(sum(b.trans_gms_net),0) as attr_gms
+  , coalesce(sum(c.visit_with_core_listing_view),0) as visits_with_core_listing_view
+  , coalesce(sum(c.total_purchased_listings),0) as total_purchased_listings
+  , coalesce(sum(c.total_purchased_core_listings),0) as total_purchased_core_listings
+  , coalesce(sum(c.unique_transactions),0) as unique_transactions
+ , coalesce(sum(attr_gms),0) as attr_gms
 from 
   visits a
 left join 
