@@ -52,11 +52,14 @@ create or replace temporary table visits as (
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
 	where 
     date(_partitiontime) >= last_date
-    and (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%')
-	      or (beacon.event_name = 'recommendations_module_delivered' 
+    and --events
+      (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%') --catpures most gm content + core
+        or beacon.event_name in ('gift_mode_introduction_modal_shown') --gm intro on home, boe
+        --rec mod deliveries 
+	      or (beacon.event_name = 'recommendations_module_delivered' -- rec mods from other outside gift mode 
             and (select value from unnest(beacon.properties.key_value) where key = 'module_placement') in     ('lp_suggested_personas_related','homescreen_gift_mode_personas') --related personas module on listing page, web AND app home popular personas module delivered, boe
             or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%')--Featured personas on hub, web
-            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas_-%')))--realted/ popular persona module on market page, web
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas_-%')))--related/ popular persona module on market page, web
 )
 select 
 	b._date  
@@ -228,12 +231,15 @@ select
 	, a.region  
   , a.admin 
   , a.top_channel 
+  --visits and impression metrics 
   , count(distinct a.visit_id) as total_gm_visits
   , sum(a.impressions) as total_gm_impressions
   , sum(a.core_visits) as core_gm_visits
   , sum(a.core_impressions) as core_gm_impressions
+  --click metrics 
   , count(distinct b.visit_id) visits_with_gm_click
   , sum(b.clicks) as total_gm_clicks
+  --listing metrics 
   , coalesce(count(distinct case when c.visit_with_purchase>0 then c.visit_id end),0) as unique_visits_with_purchase
   , coalesce(count(distinct case when c.visit_with_core_purchase>0 then c.visit_id end),0) as unique_visits_with_core_purchase
   , coalesce(sum(c.total_listing_views),0) as total_listing_views
