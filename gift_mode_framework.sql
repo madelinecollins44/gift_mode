@@ -55,8 +55,9 @@ create or replace temporary table visits as (
 	  and (((beacon.event_name = 'recommendations_module_delivered' 
         and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') in ('lp_suggested_personas_related','homescreen_gift_mode_personas'))) --related personas module on listing page, web AND app home popular personas module delivered, boe
         or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%') --Featured personas on hub, web
-            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%')) --Featured personas on hub, web
-    or (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%') or  beacon.event_name like ('market_gift_personas_%')))
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%') --Featured personas on hub, web
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas_-%') --realted/ popular persona module on market page, web
+    or (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%')))
 )
 select 
 	b._date  
@@ -243,8 +244,8 @@ select
   , coalesce(sum(c.visit_with_core_listing_view),0) as visits_with_core_listing_view
   , coalesce(sum(c.total_purchased_listings),0) as total_purchased_listings
   , coalesce(sum(c.total_purchased_core_listings),0) as total_purchased_core_listings
-  , coalesce(sum(c.unique_transactions),0) as unique_transactions
- , coalesce(sum(attr_gms),0) as attr_gms
+ 	, coalesce(sum(c.unique_transactions),0) as unique_transactions
+	, coalesce(sum(attr_gms),0) as attr_gms
 from 
   visits a
 left join 
