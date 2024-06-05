@@ -170,8 +170,10 @@ select
   , count(distinct a.listing_id) as listings_viewed
   , count(distinct case when core_listing>0 then a.listing_id end) as core_listings_viewed
   , max(case when core_listing > 0 then 1 else 0 end) as visit_with_core_listing_view
-  , max(case when b.visit_id is not null then 1 else 0 end) as purchased_in_visit
-  , max(case when b.visit_id is not null and core_listing > 0 then 1 else 0 end) as core_purchased_in_visit
+  , sum(a.purchased_after_view) as total_purchased_listings
+  , sum(case when core_listing > 0 then a.purchased_after_view end) as total_purchased_core_listings
+  , max(case when purchased_after_view > 0 then 1 else 0 end) as visit_with_purchase
+  , max(case when core_listing > 0 and purchased_after_view > 0 then 1 else 0 end) as visit_with_core_purchase
  	, count(distinct transaction_id) as unique_transactions
 	, coalesce(sum(b.trans_gms_net),0) as attr_gms
 from agg a
@@ -186,7 +188,7 @@ group by all
 ------------------------------------
 --all together 
 ------------------------------------
-create or replace temporary table as all_together as (
+create or replace temporary table all_together as (
 select
 	a._date  
 	, a.platform 
@@ -199,18 +201,18 @@ select
   , coalesce(sum(a.core_visits),0) as core_gm_visits
   , coalesce(sum(a.core_impressions),0) as core_gm_impressions
   , coalesce(count(distinct b.visit_id),0) visits_with_gm_click
-  , coalesce(sum(b.clicks),0) total_gm_clicks
-  , coalesce(visits_with_listing_view,0) as visits_with_listing_view
-  , coalesce(visits_with_core_listing_view,0) as visits_with_core_listing_view
-	, coalesce(total_listing_views,0) as total_listing_views
-	, coalesce(core_listing_views,0) as total_core_listing_views
-	, coalesce(unique_listings_viewed,0) as unique_listings_viewed
-  , coalesce(unique_core_listings_viewed,0) as unique_core_listings_viewed
-  , coalesce(unique_visits_with_a_purchase,0) as unique_visits_with_a_purchase
-  , coalesce(unique_visits_with_a_core_purchase,0) as unique_visits_with_a_core_purchase
-  , coalesce(unique_transactions,0) as unique_transactions
-  , coalesce(total_purchased_core_listings,0) as total_purchased_core_listings
-	, coalesce(total_purchased_listings,0) as total_purchased_listings
+  , coalesce(sum(b.clicks),0) as total_gm_clicks
+  , coalesce(count(distinct case when visit_with_purchase>0 then c.visit_id end),0) as unique_visits_with_core_purchase
+  , coalesce(count(distinct case when visit_with_core_purchase>0 then c.visit_id end),0) as unique_visits_with_core_purchase
+  , coalesce(sum(c.total_listing_views),0) as total_listing_views
+  , coalesce(sum(c.total_core_listing_views),0) as total_core_listing_views
+  , coalesce(sum(c.listing_id),0) as listings_viewed
+  , coalesce(sum(c.core_listings_viewed),0) as core_listings_viewed
+  , coalesce(sum(visit_with_core_listing_view),0) as visits_with_core_listing_view
+  , coalesce(sum(a.total_purchased_listings),0) as total_purchased_listings
+  , coalesce(sum(total_purchased_core_listings),0) as total_purchased_core_listings
+ 	, coalesce(sum(unique_transactions),0) as unique_transactions
+	, coalesce(sum(b.trans_gms_net),0) as attr_gms
 from 
   visits a
 left join 
