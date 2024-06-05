@@ -16,28 +16,11 @@ create or replace temporary table visits as (
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
 	where 
     date(_partitiontime) >= current_date-2
-	  and ((beacon.event_name = 'recommendations_module_delivered' 
+	  and (((beacon.event_name = 'recommendations_module_delivered' 
         and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') in ('lp_suggested_personas_related','homescreen_gift_mode_personas'))) --related personas module on listing page, web AND app home popular personas module delivered, boe
         or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%') --Featured personas on hub, web
             or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%')) --Featured personas on hub, web
-    or (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%') or  beacon.event_name like ('market_gift_personas_%'))
-    ------various ingresses + banners 
-    -- ('gift_mode_shop_by_occasions_module_seen' --shop by occasion module on homepage, web
-    -- , 'gm_gift_page_ingress_loaded' -- gift mode promo banner on gift category page, web
-    -- , 'search_gift_mode_banner_seen' -- gift mode promo banner on search page, web
-    -- , 'gm_hp_banner_loaded_seen' --homepage banner, web
-    -- , 'market_gift_personas_query_related'-- Related personas module on market page, web
-    -- , 'market_gift_personas_popular'-- popular personas module on market page, web
-    -- , 'search_gift_mode_banner_seen'-- bottom of search page for gift queries, web
-    -- , 'gift_mode_introduction_modal_shown' --Gift Mode introduction overlay shown on homescreen, boe
-    --  ------core visits 
-    -- , 'gift_mode_home' --gift mode home, boe + web
-    -- , 'gift_mode_persona'-- gift mode personas, boe + web 
-    -- , 'gift_mode_occasions_page'-- gift mode occasions, web
-    -- , 'gift_mode_browse_all_personas' -- see all personas, web
-    -- , 'gift_mode_see_all_personas' -- see all personas, boe
-    -- , 'gift_mode_results' -- gift mode quiz results, web
-    -- , 'gift_mode_quiz_results'))-- gift mode quiz results, boe
+    or (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%') or  beacon.event_name like ('market_gift_personas_%')))
 )
 select 
 	b._date  
@@ -48,7 +31,7 @@ select
   , a.top_channel 
   , visit_id
   , count(visit_id) as impressions
-  , count(distinct case when event_name in ('gift_mode_home','gift_mode_persona','gift_mode_occasions_page','gift_mode_browse_all_personas','gift_mode_see_all_personas','gift_mode_results','gift_mode_quiz_results') then visit_id end) as core_visits
+  , max(case when event_name in ('gift_mode_home','gift_mode_persona','gift_mode_occasions_page','gift_mode_browse_all_personas','gift_mode_see_all_personas','gift_mode_results','gift_mode_quiz_results') then 1 else 0 end) as core_visit
     , count(case when event_name in ('gift_mode_home','gift_mode_persona','gift_mode_occasions_page','gift_mode_browse_all_personas','gift_mode_see_all_personas','gift_mode_results','gift_mode_quiz_results') then visit_id end) as core_impressions
 from 
   etsy-data-warehouse-prod.weblog.visits a
@@ -57,7 +40,7 @@ inner join
     using (_date, visit_id)
 where 
   a._date >= current_date-2
-group by all 
+group by all
 );
 
 ------------------------------------
@@ -146,7 +129,7 @@ where
 	_date >= current_date-2
 	and event_type = "view_listing"
   and ((ref_tag like ('gm_%')) -- find ref tags of non-core visits 
-      or boe_referrer like ('boe_gift_mode%')) 
+      or referrer like ('boe_gift_mode%')) 
   -- and (ref_tag like ('gm_gift_idea_listings%') -- persona listing view, web
   -- or ref_tag like ('gm_occasion_gift_idea_listings-%') -- occasion listing view, web
   -- or ref_tag like ('gm_deluxe_persona_card%') -- quiz listing view, web
@@ -159,15 +142,11 @@ where
 , agg as (
 select
 	b._date  
-	, b.platform 
-  , b.browser_platform 
-	, b.region  
-  , b.is_admin_visit as admin 
-  , b.top_channel 
   , a.listing_id
   , a.visit_id
   , coalesce(count(*),0) as n_listing_views
-	, coalesce(max(c.purchased_after_view),0) as purchased_after_view
+  , max(case when a.ref_tag like ('gm%') then 1 else 0 end) as core_listing
+	, max(c.purchased_after_view) as purchased_after_view
 from 
   listing_views a
 inner join 
@@ -181,32 +160,27 @@ left join
     and a.sequence_number=a.sequence_number 
 where 
   b._date >= current_date-2
+group by all
 )
 select
 	a._date
-	, a.platform
-	, a.region
-	, a.is_admin_visit
-	, a.top_channel
-	, sum(a.n_listing_views) as total_listing_views
-  , count(distinct a.visit_id) as visits_with_listing_view
-  , coalesce(count(distinct case when a.ref_tag like ('gm%') then a.visit_id end),0) as visits_with_core_listing_view
-	, coalesce(sum(case when a.ref_tag like ('gm%') then a.n_listing_views end),0) as core_listing_views
-	, count(distinct a.listing_id) as unique_listings_viewed
-  , count(distinct case when a.ref_tag like ('gm%') then a.listing_id end) as unique_core_listings_viewed
-  , count(distinct b.visit_id) as unique_visits_with_a_purchase
-  , count(distinct case when a.ref_tag like ('gm%') then b.visit_id end) as unique_visits_with_a_core_purchase
-	, count(distinct transaction_id) as unique_transactions
-	, sum(a.purchased_after_view) as total_purchased_listings
-  , sum(case when when a.ref_tag like ('gm%') then a.purchased_after_view end) as total_purchased_core_listings
+  , a.visit_id
+	, sum(n_listing_views) as total_listing_views
+  , sum(case when core_listing > 0 then n_listing_views end) as total_core_listing_views
+  , count(distinct a.listing_id) as listings_viewed
+  , count(distinct case when core_listing>0 then a.listing_id end) as core_listings_viewed
+  , max(case when core_listing > 0 then 1 else 0 end) as visit_with_core_listing_view
+  , max(case when b.visit_id is not null then 1 else 0 end) as purchased_in_visit
+  , max(case when b.visit_id is not null and core_listing > 0 then 1 else 0 end) as core_purchased_in_visit
+ 	, count(distinct transaction_id) as unique_transactions
 	, coalesce(sum(b.trans_gms_net),0) as attr_gms
 from agg a
 left join listing_gms b
     on a._date = b._date
-	  and a.platform = b.platform
 	  and a.visit_id = b.visit_id
 	  and a.listing_id = b.listing_id
 	  and a.purchased_after_view > 0
+group by all 
 );
 
 ------------------------------------
