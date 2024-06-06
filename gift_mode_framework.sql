@@ -79,7 +79,7 @@ where
 group by all
 );
 
---this table looks at visits with gift_mode specific ref_tags (includes ALL clicks-- listings included, looks at ref_tags)
+--this table looks at visits with gift_mode specific ref_tags to primary pages 
 create or replace temporary table clicks as (
 with get_refs as (
 select 
@@ -88,23 +88,27 @@ select
 	, sequence_number 
 	-- , regexp_substr(e.referrer, "ref=([^*&?%|]+)") as boe_ref 
 	, ref_tag
+  , event_type
 from 
 	`etsy-data-warehouse-prod`.weblog.events e 
 where 
-	_date >= last_date
+	_date >= current_date-1
+  and page_view=1 -- user goes to new page, showing a click to a different page
   and (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
       or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
       or ref_tag like ('gm%') -- mostly everything else 
       or ref_tag like ('%GiftMode%') --Gift Teaser promo banner on hub, web
       or ref_tag like ('hp_gm%') -- Shop by occasion on homepage, web
       or ref_tag like ('GiftTeaser%') -- Skinny Banner (Mother's Day), web
-      or ref_tag like ('hub_stashgrid_module%')) --featured persona on hub page, web
+      or ref_tag like ('hub_stashgrid_module%')) --featured persona on hub page, web NEED CLARIFICATION ON THIS BC SEEMS BROAD
 )
-select
+select 
 	_date 
 	, visit_id 
   , count(visit_id) as clicks
-from get_refs
+  , count(case when event_type not in ('view_listing') then visit_id end) as non_listing_clicks
+  , count(case when ref_tag like ('hub_stashgrid_module%') then visit_id end) as hub_clicks
+from get_refs 
 group by all 
 );
     --banners + other ingresses
