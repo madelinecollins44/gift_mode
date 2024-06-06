@@ -54,12 +54,9 @@ create or replace temporary table visits as (
     date(_partitiontime) >= last_date
     and --events
       (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%') --catpures most gm content + core
-        or beacon.event_name in ('gift_mode_introduction_modal_shown') --gm intro on home, boe
-        --rec mod deliveries 
 	      or (beacon.event_name = 'recommendations_module_delivered' -- rec mods from other outside gift mode 
             and (select value from unnest(beacon.properties.key_value) where key = 'module_placement') in     ('lp_suggested_personas_related','homescreen_gift_mode_personas') --related personas module on listing page, web AND app home popular personas module delivered, boe
-            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('hub_stashgrid_module-%')--Featured personas on hub, web
-            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas_-%')))--related/ popular persona module on market page, web
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas%')))--related/ popular persona module on market page, web
 )
 select 
 	b._date  
@@ -100,7 +97,8 @@ where
       or ref_tag like ('gm%') -- mostly everything else 
       or ref_tag like ('%GiftMode%') --Gift Teaser promo banner on hub, web
       or ref_tag like ('hp_gm%') -- Shop by occasion on homepage, web
-      or ref_tag like ('GiftTeaser%')) -- Skinny Banner (Mother's Day), web
+      or ref_tag like ('GiftTeaser%') -- Skinny Banner (Mother's Day), web
+      or ref_tag like ('hub_stashgrid_module%')) --featured persona on hub page, web
 )
 select
 	_date 
@@ -116,7 +114,7 @@ group by all
     --   , 'GiftTeaser_MDAY24_Skinny_Sitewide' -- Skinny Banner (Mother's Day), web
     --   , 'gm_market_personas_query_related' --Related personas module on market page, web
     --   , 'gm_market_personas_popular'--popular personas module on market page, web
-    --   , 'gm-hp-banner' -- hampage banner gift mode ingress clicked, web
+    --   , 'gm-hp-banner' -- homepage banner gift mode ingress clicked, web
     --   --ref tags on core pages
     --   , 'gm_popular_personas' --Popular gift ideas persona card clicked from gift mode home, web
     --   , 'gm_popular_gift_listings' --Popular gifts listing card clicked from gift mode home, 
@@ -211,8 +209,10 @@ select
   , max(case when core_listing > 0 and purchased_after_view > 0 then 1 else 0 end) as visit_with_core_purchase
  	, count(distinct transaction_id) as unique_transactions
 	, coalesce(sum(b.trans_gms_net),0) as attr_gms
-from agg a
-left join listing_gms b
+from 
+  agg a
+left join 
+  listing_gms b
     on a._date = b._date
 	  and a.visit_id = b.visit_id
 	  and a.listing_id = b.listing_id
