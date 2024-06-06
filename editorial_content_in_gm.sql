@@ -2,7 +2,6 @@
 --CLICK RATE OF EDITORIAL CONTENT ON GIFT MODE PAGES AT THE MODULE LEVEL
 --how do modules perform against non-ep modules?
 -------------------------------------------------------------------------
-----this this is correct way 
 with impressions as (
 select -- get all deliveries 
 	date(_partitiontime) as _date
@@ -40,6 +39,7 @@ group by all
   , listing_id
   , ref_tag
   , count(*) as n_listing_views
+  , purchased_after_view
 from 
   `etsy-data-warehouse-prod`.analytics.listing_views lv
 where 
@@ -56,6 +56,10 @@ select
   , sum(case when ref_tag like ('gm_editorial_listings%') then n_listing_views end) as persona_ep_views
   , sum(case when ref_tag like ('gm_popular_gift_listings%') then n_listing_views end) as home_ep_views
   , sum(case when ref_tag like ('gm_gift_idea_listings%') or ref_tag like ('gm_occasion_gift_idea_listings%') then n_listing_views end) as gift_idea_views
+    , sum(case when ref_tag like ('gm_occasions_etsys_picks%') then purchased_after_view end) as occasion_ep_purchases
+  , sum(case when ref_tag like ('gm_editorial_listings%') then purchased_after_view end) as persona_ep_purchases
+  , sum(case when ref_tag like ('gm_popular_gift_listings%') then purchased_after_view end) as home_ep_purchases
+  , sum(case when ref_tag like ('gm_gift_idea_listings%') or ref_tag like ('gm_occasion_gift_idea_listings%') then purchased_after_view end) as gift_idea_purchases
 from listing_views
 group by all
 )
@@ -68,64 +72,13 @@ select
   , sum(persona_ep_views) as persona_ep_views
   , sum(home_ep_views) as home_ep_views
   , sum(gift_idea_views) as gift_idea_views
+  , sum(occasion_ep_views) as occasion_ep_purchases
+  , sum(persona_ep_views) as persona_ep_purchases
+  , sum(home_ep_views) as home_ep_purchases
+  , sum(gift_idea_views) as gift_idea_purchases
 from impressions_agg a
 left join listing_views_agg b
   using (_date, visit_id) 
-
-	---ignore below
-with impressions as (
-select
-	date(_partitiontime) as _date
-	, visit_id
-	, sequence_number
-	, beacon.event_name as event_name
-	-- , (select value from unnest(beacon.properties.key_value) where key = 'listing_ids') as listing_ids
-from
-	`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
-inner join  
-  etsy-data-warehouse-prod.weblog.visits b
-    using (visit_id)
-where
-	date(_partitiontime) >= current_date-30
-  and ((beacon.event_name in ('gift_mode_persona', 'gift_mode_occasions_page','popular_gift_listings_delivered') -- using primary pages bc ep delivery event on occasions page does not exist
-      or (beacon.event_name in ('recommendations_module_delivered') and ((select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('%gift_mode_occasion_gift_idea_%') or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('%gift_mode_gift_idea_listings%')))))
-  and b._date >= current_date-30
-  and b.platform in ('mobile_web','desktop') 
-)
-, clicks as (
-select
-	date(_partitiontime) as _date
-	, visit_id
-	, beacon.event_name as event_type
-	, sequence_number
-	, regexp_substr(beacon.loc, 'ref=([^*&?%]+)') as ref_tag
-  , split(regexp_substr(beacon.loc, 'ref=([^*&?%]+)'), "-")[safe_offset(0)] as ref_tag_clean
-  -- , (select value from unnest(beacon.properties.key_value) where key = 'listing_id') as listing_id
-	from
-		`etsy-visit-pipe-prod`.canonical.visit_id_beacons
-	where 
-    date(_partitiontime) >= current_date-30
-	  and beacon.event_name in ('view_listing')
-    and (regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_editorial_listings%') -- persona page ep clicks
-        or regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_occasions_etsys_picks%')
-        or regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_popular_gift_listings%')
-        or regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_occasion_gift_idea_listings%')
-        or regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_gift_idea_listings%'))
-)
-select
-  count(case when a.event_name in ('gift_mode_persona') then a.visit_id end) as ep_persona_impressions
-  , count(case when b.ref_tag_clean in ('gm_editorial_listings') then b.visit_id end) as ep_persona_clicks
-  , count(case when a.event_name in ('gift_mode_occasions_page') then a.visit_id end) as ep_occasion_impressions
-  , count(case when b.ref_tag_clean in ('gm_occasions_etsys_picks') then b.visit_id end)  as ep_occasion_clicks
-  , count(case when a.event_name in ('popular_gift_listings_delivered') then a.visit_id end) as ep_home_impressions
-  , count(case when b.ref_tag_clean in ('gm_popular_gift_listings') then b.visit_id end)  as ep_home_clicks
-    , count(case when a.event_name in ('recommendations_module_delivered') then a.visit_id end) as non_ep_impressions
-  , count(case when b.ref_tag_clean in ('gm_occasion_gift_idea_listings','gm_gift_idea_listings') then b.visit_id end)  as non_ep_clicks
-from 
-  impressions a
-left join 
-  clicks b
-    using (_date, visit_id)
 
 --------------------------------------------------------------------------------------------------------------------------------------------------
 --CLICK RATE OF STASH LISTINGS VS OTHER LISTINGS
