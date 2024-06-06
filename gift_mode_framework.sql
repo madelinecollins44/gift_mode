@@ -96,13 +96,14 @@ from
 where 
 	_date >= current_date-1
   and page_view=1 -- user goes to new page, showing a click to a different page
-  and (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
-      or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
-      or ref_tag like ('gm%') -- mostly everything else 
-      or ref_tag like ('%GiftMode%') --Gift Teaser promo banner on hub, web
-      or ref_tag like ('hp_gm%') -- Shop by occasion on homepage, web
-      or ref_tag like ('GiftTeaser%') -- Skinny Banner (Mother's Day), web
-      or ref_tag like ('hub_stashgrid_module%')) --featured persona on hub page, web NEED CLARIFICATION ON THIS BC SEEMS BROAD
+    and (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
+      	or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
+      	or ref_tag like ('gm%') -- mostly everything else 
+      	or ref_tag like ('%GiftMode%') --Gift Teaser promo banner on hub, web
+      	or ref_tag like ('hp_gm%') -- Shop by occasion on homepage, web
+      	or ref_tag like ('GiftTeaser%') -- Skinny Banner (Mother's Day), web
+      	or ref_tag like ('hub_stashgrid_module%') --featured persona on hub page, web NEED CLARIFICATION ON THIS BC SEEMS BROAD
+      	or ref_tag like ('listing_suggested_persona_listings_related%')) -- Related personas module on listing page, web
 )
 select 
 	_date 
