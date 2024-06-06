@@ -97,6 +97,7 @@ left join listing_views_agg b
 --   and l.is_active = 1
 -- );
 
+
 with all_gift_idea_deliveries as ( -- gg
 	select
   date(_partitiontime) as _date
@@ -124,6 +125,7 @@ group by all
 select
   date(a._partitiontime) as _date
   , a.visit_id
+  , a.sequence_number
   , (select value from unnest(beacon.properties.key_value) where key = "listing_id") as listing_id
 from 
   `etsy-visit-pipe-prod.canonical.visit_id_beacons`a
@@ -133,21 +135,43 @@ where
        or regexp_substr(beacon.loc, 'ref=([^*&?%]+)') like ('gm_gift_idea_listings%')) -- comes from gift mode 
   and date(_partitiontime) >= current_date-15
 )
+, listing_views as (
+select 
+  a._date
+  , a.visit_id
+  , a.listing_id 
+  , count(*) as n_listing_views
+  , purchased_after_view
+from 
+  ref_tags a
+inner join 
+  `etsy-data-warehouse-prod`.analytics.listing_views lv
+    on a._date = lv._date
+    and a.visit_id = lv.visit_id
+    and a.sequence_number = lv.sequence_number
+    and cast(a.listing_id as int64)= lv.listing_id
+where lv._date >= current_date-15
+group by all 
+)
 , ref_tags_agg as (
 select 
    _date
   , listing_id
-  , count(visit_id) as views 
-from ref_tags
+  , sum(n_listing_views) as views
+  , sum(purchased_after_view) as purchase_after_view 
+from listing_views
 group by all 
 )
 select 
 	sum(a.deliveries) as deliveries
 	, sum(b.views) as views
+  , sum(b.purchase_after_view) as purchases
 	, sum(case when c.listing_id is not null then a.deliveries end) as stash_deliveries
 	, sum(case when c.listing_id is not null then b.views end) as stash_views	
+  , sum(case when c.listing_id is not null then b.purchase_after_view end) as stash_purchases	
 	, sum(case when c.listing_id is null then a.deliveries end) as non_stash_deliveries
 	, sum(case when c.listing_id is null then b.views end) as non_stash_views
+  , sum(case when c.listing_id is null then b.purchase_after_view end) as non_stash_purchases
 from 
 	clean_deliveries a
 left join 
