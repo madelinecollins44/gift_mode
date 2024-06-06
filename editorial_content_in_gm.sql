@@ -180,3 +180,66 @@ left join
 left join 
 	etsy-data-warehouse-dev.madelinecollins.active_stash_listings c 
 		on a.listing_id=cast(c.listing_id as string)
+
+----run gift ideas faster
+----this this is correct way 
+with impressions as (
+select -- get all deliveries 
+	date(_partitiontime) as _date
+	, visit_id
+	, sequence_number
+	, beacon.event_name as event_name
+  , (select value from unnest(beacon.properties.key_value) where key = 'module_placement')
+	-- , (select value from unnest(beacon.properties.key_value) where key = 'listing_ids') as listing_ids
+from
+	`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
+inner join  
+  etsy-data-warehouse-prod.weblog.visits b
+    using (visit_id)
+where
+	date(_partitiontime) >= current_date-15
+  and b._date >= current_date-15
+  and beacon.event_name in ('recommendations_module_delivered') 
+  and (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('gift%mode%gift%idea%')
+   and b.platform in ('mobile_web','desktop') 
+)
+, impressions_agg as (
+select
+  _date
+  , visit_id
+  , count(case when event_name in ('recommendations_module_delivered') then visit_id end) as gift_idea_impressions
+from impressions 
+group by all 
+)
+, listing_views as
+(select 
+  _date
+  , visit_id
+  , listing_id
+  , ref_tag
+  , count(*) as n_listing_views
+  , purchased_after_view
+from 
+  `etsy-data-warehouse-prod`.analytics.listing_views lv
+where 
+  lv.platform in ("desktop", "mobile_web") 
+  and (ref_tag like ('gm_gift_idea_listings%') or ref_tag like ('gm_occasion_gift_idea_listings%'))
+  and _date >= current_date-15
+group by all
+)
+, listing_views_agg as (
+select 
+  _date 
+  , visit_id 
+  , sum(case when ref_tag like ('gm_gift_idea_listings%') or ref_tag like ('gm_occasion_gift_idea_listings%') then n_listing_views end) as gift_idea_views
+  , sum(case when ref_tag like ('gm_gift_idea_listings%') or ref_tag like ('gm_occasion_gift_idea_listings%') then purchased_after_view end) as gift_idea_purchases
+from listing_views
+group by all
+)
+select
+  sum(gift_idea_impressions) as gift_idea_impressions
+  , sum(gift_idea_views) as gift_idea_views
+  , sum(gift_idea_purchases) as gift_idea_purchases
+from impressions_agg a
+left join listing_views_agg b
+  using (_date, visit_id) 
