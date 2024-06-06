@@ -18,6 +18,8 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpi
   , core_gm_impressions int64
   , visits_with_gm_click int64
   , total_gm_clicks int64
+  , non_listing_clicks int64
+  , hub_clicks int64
   , unique_visits_with_purchase int64
   , unique_visits_with_core_purchase int64
   , total_listing_views int64
@@ -243,6 +245,8 @@ select
   --click metrics 
   , count(distinct b.visit_id) visits_with_gm_click
   , sum(b.clicks) as total_gm_clicks
+  , sum(b.non_listing_clicks) as non_listing_clicks
+  , sum(b.hub_clicks) as hub_clicks
   --listing metrics 
   , coalesce(count(distinct case when c.visit_with_purchase>0 then c.visit_id end),0) as unique_visits_with_purchase
   , coalesce(count(distinct case when c.visit_with_core_purchase>0 then c.visit_id end),0) as unique_visits_with_core_purchase
