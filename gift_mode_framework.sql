@@ -103,7 +103,7 @@ where
       	or ref_tag like ('hp_gm%') -- Shop by occasion on homepage, web
       	or ref_tag like ('GiftTeaser%') -- Skinny Banner (Mother's Day), web
       	or ref_tag like ('hub_stashgrid_module%') --featured persona on hub page, web NEED CLARIFICATION ON THIS BC SEEMS BROAD
-      	or ref_tag like ('listing_suggested_persona_listings_related%')) -- Related personas module on listing page, web
+      	or ref_tag like ('listing_suggested_persona%')) -- Related personas module on listing page, web
 )
 select 
 	_date 
@@ -168,7 +168,7 @@ from
 where 
 	_date >= last_date
 	and event_type = "view_listing"
-  and ((ref_tag like ('gm_%') or ref_tag like ('listing_suggested_persona_listings_related%')) --believe this is the only listing ref tag non-core related
+  and ((ref_tag like ('gm_%') or ref_tag like ('listing_suggested_persona%')) --believe this is the only listing ref tag non-core related
       or referrer like ('boe_gift_mode%')) 
   -- and (ref_tag like ('gm_gift_idea_listings%') -- persona listing view, web
   -- or ref_tag like ('gm_occasion_gift_idea_listings-%') -- occasion listing view, web
