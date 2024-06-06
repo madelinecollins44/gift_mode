@@ -169,7 +169,7 @@ from
 where 
 	_date >= last_date
 	and event_type = "view_listing"
-  and ((ref_tag like ('gm_%') or ref_tag like ('listing_suggested_persona%')) --believe this is the only listing ref tag non-core related
+  and ((ref_tag like ('gm_%') or ref_tag like ('listing_suggested_persona%')) -- nowhere a user can see a GM listing from outside a core page from heather
       or referrer like ('boe_gift_mode%')) 
   -- and (ref_tag like ('gm_gift_idea_listings%') -- persona listing view, web
   -- or ref_tag like ('gm_occasion_gift_idea_listings-%') -- occasion listing view, web
