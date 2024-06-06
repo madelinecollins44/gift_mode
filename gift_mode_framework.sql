@@ -79,7 +79,7 @@ where
 group by all
 );
 
---this table looks at visits with gift_mode specific ref_tags		
+--this table looks at visits with gift_mode specific ref_tags (includes ALL clicks-- listings included, looks at ref_tags)
 create or replace temporary table clicks as (
 with get_refs as (
 select 
