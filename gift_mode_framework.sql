@@ -42,6 +42,7 @@ set last_date= current_date - 1;
 
 
 --this table grabs visits across gift mode related content and core gift mode pages 
+---THINK I AM MISSING MODULE_PLACEMENT FOR WHERE GM LISITNGS ARE DELIVERED ON LISTING PAGES, picking up ref tags but not in this table
 create or replace temporary table visits as (
   with get_recmods_events as (
   select
