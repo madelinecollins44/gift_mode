@@ -1,7 +1,7 @@
 -------------------------
 purchases 
 -------------------------
-  with purchases as (
+with purchases as (
 select
 	date(r.creation_tsz) as _date 
 	, tv.visit_id
@@ -42,6 +42,7 @@ and is_gift > 0
 )
 select
 	 top_channel
+	 , count(distinct receipt_id) as total_receipts
 	, count(distinct case when gift_title >0 then receipt_id end) gift_title_purchases --counting receipts bc on listing level 
 	, count(distinct case when is_gift >0 then receipt_id end) is_gift_purchases 
 	, count(distinct case when b.visit_id is not null then receipt_id end) gift_query_purchases 
