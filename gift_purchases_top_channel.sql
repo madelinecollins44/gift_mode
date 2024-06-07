@@ -60,7 +60,7 @@ group by all
 with get_views as (
 select
   a._date
-  , a.top_channel
+  , f.reporting_channel_group
   , a.listing_id
   , case when regexp_contains(c.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
   , avg(overall_giftiness) as giftiness_score
@@ -68,21 +68,29 @@ select
 from
   etsy-data-warehouse-prod.analytics.listing_views a
 inner join 
-  etsy-data-warehouse-prod.weblog.visits b using(visit_id, _date)
-left join 
+  etsy-data-warehouse-prod.weblog.visits b 
+    using(visit_id, _date)
+inner join 
+  etsy-data-warehouse-prod.buyatt_mart.channel_dimensions f
+    on b.utm_medium=f.utm_medium
+    and b.utm_campaign=f.utm_campaign
+    and b.top_channel=f.top_channel
+    and b.second_channel=f.second_channel
+    and b.third_channel=f.third_channel
+left join
   etsy-data-warehouse-prod.listing_mart.listing_titles c 
-    on a.listing_id=c.lisitng_id
+    on a.listing_id=c.listing_id
 left join 
   etsy-data-warehouse-prod.knowledge_base.listing_giftiness d
     on a.listing_id=d.listing_id
     and a._date=d._date
 where 
-  a._date >= current_date-1
-  and b._date >= current_date-1
+  a._date >= current_date-30
+  and b._date >= current_date-30
 group by all 
 )
 select
-  top_channel
+  reporting_channel_group
   , count(distinct listing_id) as unique_listings_viewed
   , sum(views) as total_views
   , count(distinct case when gift_title > 0 then listing_id end ) as unique_gift_title_listings_viewed
