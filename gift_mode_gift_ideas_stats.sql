@@ -326,10 +326,11 @@ inner join -- only looks at the listings
     and a.sequence_number=b.sequence_number
 left join 
   etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_relation c
-    on b.gift_idea_id=cast(c.gift_idea_id as string)
+    on b.web_gift_idea_id=cast(c.gift_idea_id as string)
 where
 	a._date >= current_date-1
   and b.event_name in ('view_listing')
+  and a.platform in ('mobile_web','desktop')
 group by all
 )
 , boe_agg as (
@@ -365,6 +366,7 @@ inner join
 where 
 	a._date >= current_date-1
   and e.referrer like ('%boe_gift_mode_gift_idea_listings%')
+  and a.platform in ('boe')
 group by all 
 )
 , boe_clicks as (
@@ -385,7 +387,7 @@ left join
 		and a.boe_ref=b.boe_ref
 group by all 
 )
--- , clicks_agg as (
+, clicks_agg as (
 select 
  _date
   , visit_id
@@ -406,4 +408,35 @@ select
   , n_listing_views
   , purchased_after_view
 from web_clicks
--- )
+)
+select
+ a._date
+  , a.gift_idea_id
+  , c.platform
+  , c.browser_platform
+  , c.region
+	, c.top_channel
+	, c.is_admin_visit as admin
+  , a.page_id -- from loc 
+  , count(distinct a.visit_id) as visits_with_a_click
+  , sum(a.n_listing_views) as total_listing_views
+  , count(distinct a.listing_id) as unique_listings_viewed
+  -- , count(distinct transaction_id) as unique_transactions
+  , sum(a.purchased_after_view) as total_purchased_listings
+  -- , coalesce(sum(b.trans_gms_net),0) as attr_gms
+from 
+  clicks_agg a
+-- left join
+--   listing_gms b
+-- on
+--   a._date = b._date
+--   and a.visit_id = b.visit_id
+--   and a.listing_id = b.listing_id
+--   and a.purchased_after_view > 0 -- this means there must have been a purchase 
+inner join 
+  etsy-data-warehouse-prod.weblog.visits c
+    on a._date = c._date
+    and a.visit_id = c.visit_id
+where c._date >=current_date-1
+group by all
+-- );
