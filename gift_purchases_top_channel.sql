@@ -5,7 +5,6 @@ with purchases as (
 select
 	date(r.creation_tsz) as _date 
 	, tv.visit_id
-	, tv.top_channel
 	, r.receipt_id
 	, a.transaction_id 
 	, v.title
@@ -16,18 +15,16 @@ from
 	`etsy-data-warehouse-prod`.transaction_mart.all_receipts r 
 join
 	`etsy-data-warehouse-prod`.transaction_mart.all_transactions a 
-using(receipt_id)
+    using(receipt_id)
 left join 
 	`etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans t 
-using(transaction_id)
+    using(transaction_id)
 inner join 
 	`etsy-data-warehouse-prod`.transaction_mart.transactions_visits tv 
-on 
-	a.transaction_id = tv.transaction_id
+    on a.transaction_id = tv.transaction_id
 left join 
 	`etsy-data-warehouse-prod.schlep_views.transactions_vw` v 
-on 
-	v.transaction_id = a.transaction_id
+  on v.transaction_id = a.transaction_id
 where 
 	a.date >= current_date-30
 )
@@ -41,7 +38,25 @@ WHERE
 and is_gift > 0
 )
 select
-	 top_channel
+case 
+                when top_channel in ('direct', 'dark', 'internal', 'seo') then initcap(top_channel)
+                when top_channel like 'social_%' then 'Non-Paid Social'
+                when top_channel like 'email%' then 'Email'
+                when top_channel like 'push_%' then 'Push'
+                when top_channel in ('us_paid','intl_paid') then 
+                        case when (second_channel like '%gpla' or second_channel like '%bing_plas' or second_channel like '%css_plas') then 'PLA'
+                                when (second_channel like '%_ppc' or second_channel like 'admarketplace') then 
+                                        case when third_channel like '%_brand' then 'SEM - Brand'
+                                                else 'SEM - Non-Brand' 
+                                        end
+                                when second_channel='affiliates'  then 'Affiliates'
+                                when (second_channel like 'facebook_disp%' or second_channel like 'pinterest_disp%') then 'Paid Social'
+                                when second_channel like '%native_display' then 'Display'
+                                when second_channel in ('us_video','intl_video') then 'Video'
+                                else 'Other Paid'
+                        end
+                else 'Other Non-Paid'
+        end as reporting_channel_group
 	 , count(distinct receipt_id) as total_receipts
 	, count(distinct case when gift_title >0 then receipt_id end) gift_title_purchases --counting receipts bc on listing level 
 	, count(distinct case when is_gift >0 then receipt_id end) is_gift_purchases 
@@ -52,6 +67,10 @@ from
 left join 
 	gift_searches b
 		using (_date, visit_id)
+inner join 
+  etsy-data-warehouse-prod.weblog.visits c
+    on a.visit_id=c.visit_id
+where c._date >= current_date-30
 group by all
 
 ------------------------------------
@@ -60,7 +79,25 @@ group by all
 with get_views as (
 select
   a._date
-  , f.reporting_channel_group
+, case 
+                when top_channel in ('direct', 'dark', 'internal', 'seo') then initcap(top_channel)
+                when top_channel like 'social_%' then 'Non-Paid Social'
+                when top_channel like 'email%' then 'Email'
+                when top_channel like 'push_%' then 'Push'
+                when top_channel in ('us_paid','intl_paid') then 
+                        case when (second_channel like '%gpla' or second_channel like '%bing_plas' or second_channel like '%css_plas') then 'PLA'
+                                when (second_channel like '%_ppc' or second_channel like 'admarketplace') then 
+                                        case when third_channel like '%_brand' then 'SEM - Brand'
+                                                else 'SEM - Non-Brand' 
+                                        end
+                                when second_channel='affiliates'  then 'Affiliates'
+                                when (second_channel like 'facebook_disp%' or second_channel like 'pinterest_disp%') then 'Paid Social'
+                                when second_channel like '%native_display' then 'Display'
+                                when second_channel in ('us_video','intl_video') then 'Video'
+                                else 'Other Paid'
+                        end
+                else 'Other Non-Paid'
+        end as reporting_channel_group
   , a.listing_id
   , case when regexp_contains(c.title, "(\?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト") then 1 else 0 end as gift_title
   , avg(overall_giftiness) as giftiness_score
@@ -70,13 +107,6 @@ from
 inner join 
   etsy-data-warehouse-prod.weblog.visits b 
     using(visit_id, _date)
-left join 
-  etsy-data-warehouse-prod.buyatt_mart.channel_dimensions f
-    on b.utm_medium=f.utm_medium
-    and b.utm_campaign=f.utm_campaign
-    and b.top_channel=f.top_channel
-    and b.second_channel=f.second_channel
-    and b.third_channel=f.third_channel
 left join
   etsy-data-warehouse-prod.listing_mart.listing_titles c 
     on a.listing_id=c.listing_id
