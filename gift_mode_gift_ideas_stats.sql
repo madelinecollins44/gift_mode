@@ -328,7 +328,7 @@ left join
   etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_relation c
     on b.gift_idea_id=cast(c.gift_idea_id as string)
 where
-	a._date >= last_date
+	a._date >= current_date-1
   and b.event_name in ('view_listing')
 group by all
 )
@@ -348,21 +348,24 @@ where event_name in ('recommendations_module_delivered')
 )
 , boe_listing_views as (
 select 
-	_date 
-	, visit_id 
-	, sequence_number 
-	, safe_cast(listing_id as int64) as listing_id
-	, url
+	a._date 
+	, a.visit_id 
+	, a.sequence_number 
+	, safe_cast(a.listing_id as int64) as listing_id
 	, REGEXP_REPLACE(regexp_substr(e.referrer, "ref=([^*&?%|]+)"), '-[^-]*$', '') AS boe_ref -- need it this way to get content uid
+  , coalesce(count(a.listing_id),0) as n_listing_views
   , coalesce(max(a.purchased_after_view),0) as purchased_after_view
 from 
-	`etsy-data-warehouse-prod`.weblog.events e 
-inner join
-  etsy-data-warehouse-prod.analytics.listing_views v
+  etsy-data-warehouse-prod.analytics.listing_views a
+inner join 
+  `etsy-data-warehouse-prod`.weblog.events e 
+    on a.listing_id=cast(e.listing_id as int64)
+    and a.visit_id=e.visit_id
+    and a.sequence_number=e.sequence_number
 where 
-	_date >= current_date-1
-	and event_type = "view_listing"
+	a._date >= current_date-1
   and e.referrer like ('%boe_gift_mode_gift_idea_listings%')
+group by all 
 )
 , boe_clicks as (
 select 
@@ -371,7 +374,7 @@ a.visit_id
   , a.listing_id
   , b.gift_idea_id
   , b.persona_id
-  , count(a.visit_id) as n_listing_views
+  , n_listing_views
   , purchased_after_view
 from 
 	boe_listing_views a
@@ -389,7 +392,7 @@ select
   , listing_id
   , gift_idea_id
   , persona_id as page_id
-  , views
+  , n_listing_views
   , purchased_after_view
 from 
 	boe_clicks
@@ -400,7 +403,7 @@ select
   , listing_id
   , gift_idea_id
   , page_id
-  , a.listing_id
-  , coalesce(count(a.listing_id),0) as n_listing_views
-  , coalesce(max(a.purchased_after_view),0) as purchased_after_view
+  , n_listing_views
+  , purchased_after_view
+from web_clicks
 -- )
