@@ -70,7 +70,7 @@ from
 inner join 
   etsy-data-warehouse-prod.weblog.visits b 
     using(visit_id, _date)
-inner join 
+left join 
   etsy-data-warehouse-prod.buyatt_mart.channel_dimensions f
     on b.utm_medium=f.utm_medium
     and b.utm_campaign=f.utm_campaign
