@@ -278,72 +278,129 @@ END
 
 
 ----boe situation 
-with listing_views as (
-	select 
-	_date 
-	, visit_id 
-	, sequence_number 
-	, safe_cast(listing_id as int64) as listing_id
-	, url
-	, REGEXP_REPLACE( regexp_substr(e.referrer, "ref=([^*&?%|]+)"), '-[^-]*$', '') AS boe_ref
-from 
-	`etsy-data-warehouse-prod`.weblog.events e 
-where 
-	_date >= current_date-1
-	and event_type = "view_listing"
-  and e.referrer like ('%boe_gift_mode_gift_idea_listings%')
-), clicks as (
+with get_ref_tags as (
 select -- this is only for mweb+desktop
     date(a._partitiontime) as _date
     , a.visit_id
     , a.sequence_number
     , beacon.event_name as event_name
+    --this is for boe, pull outs module_placement and content_source_uid for gift idea deliveries 
     , (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
     , (select value from unnest(beacon.properties.key_value) where key = "content_source_uid") as content_source_uid
     , (select value from unnest(beacon.properties.key_value) where key = "gift_idea_id") as gift_idea_id
     , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
-    , concat ((select value from unnest(beacon.properties.key_value) where key = "module_placement"), '-', (select value from unnest(beacon.properties.key_value) where key = "content_source_uid")) as boe_ref
     , (select value from unnest(beacon.properties.key_value) where key = "listing_ids") as listing_ids
---this is all for web
-    -- , beacon.loc as loc
-    -- , (select value from unnest(beacon.properties.key_value) where key = "listing_id") as listing_id
-    -- , regexp_substr(beacon.loc, "gift_idea_id=([^*&?%]+)") as gift_idea_id-- grabs gift idea
-    -- , regexp_substr(beacon.loc, "persona_id=([^*&?%]+)") as persona_id -- grabs persona_id, need to pull persona_id here bc gift_idea_ids are NOT unique to personas
+--this is all for web, pulls out gift idea + persona id from loc on listing page
+    , beacon.loc as loc
+    , (select value from unnest(beacon.properties.key_value) where key = "listing_id") as listing_id
+    , regexp_substr(beacon.loc, "gift_idea_id=([^*&?%]+)") as web_gift_idea_id-- grabs gift idea
+    , regexp_substr(beacon.loc, "persona_id=([^*&?%]+)") as web_persona_id -- grabs persona_id, need to pull persona_id here bc gift_idea_ids are NOT unique to personas
 from 
   `etsy-visit-pipe-prod.canonical.visit_id_beacons`a
 where 
   date(_partitiontime) >= current_date-1
-  -- (beacon.event_name in ('view_listing') and beacon.loc like ('%gift_idea_id%')) -- comes from gift mode, for web
-  and (beacon.event_name in ('recommendations_module_delivered') and (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ('boe_gift_mode_gift_idea_listings%'))
+  and ((beacon.event_name in ('view_listing') and beacon.loc like ('%gift_idea_id%')) -- comes from gift mode, for web
+  or (beacon.event_name in ('recommendations_module_delivered') and (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ('boe_gift_mode_gift_idea_listings%')))
 )
-, boe_clicks as (
+, web_clicks as (
+select
+	a._date
+	, a.visit_id
+	, a.referring_page_event
+	, a.referring_page_event_sequence_number
+  , b.web_gift_idea_id as gift_idea_id
+  , case 
+      when web_persona_id is not null then web_persona_id
+      else cast(c.other_id as string) -- can join gift_idea_ids to occasion_ids since gift_idea_ids ARE unique to occasion_ids
+    end as page_id
+  , a.listing_id
+  , coalesce(count(a.listing_id),0) as n_listing_views
+  , coalesce(max(a.purchased_after_view),0) as purchased_after_view
+from
+	`etsy-data-warehouse-prod`.analytics.listing_views a
+inner join -- only looks at the listings 
+	get_ref_tags b 
+    on a._date=b._date
+    and a.visit_id=b.visit_id
+    and a.listing_id=cast(b.listing_id as int64)
+    and a.sequence_number=b.sequence_number
+left join 
+  etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_relation c
+    on b.gift_idea_id=cast(c.gift_idea_id as string)
+where
+	a._date >= last_date
+  and b.event_name in ('view_listing')
+group by all
+)
+, boe_agg as (
 select
    _date
   , visit_id
   , sequence_number
-  , boe_ref
+  , concat(module_placement,'-', content_source_uid) as boe_ref
   , persona_id
   , gift_idea_id
   , listing_id
 from 
-  clicks
+  get_ref_tags
 cross join unnest(split(listing_ids, ",")) listing_id
+where event_name in ('recommendations_module_delivered')
 )
+, boe_listing_views as (
+select 
+	_date 
+	, visit_id 
+	, sequence_number 
+	, safe_cast(listing_id as int64) as listing_id
+	, url
+	, REGEXP_REPLACE(regexp_substr(e.referrer, "ref=([^*&?%|]+)"), '-[^-]*$', '') AS boe_ref -- need it this way to get content uid
+  , coalesce(max(a.purchased_after_view),0) as purchased_after_view
+from 
+	`etsy-data-warehouse-prod`.weblog.events e 
+inner join
+  etsy-data-warehouse-prod.analytics.listing_views v
+where 
+	_date >= current_date-1
+	and event_type = "view_listing"
+  and e.referrer like ('%boe_gift_mode_gift_idea_listings%')
+)
+, boe_clicks as (
 select 
 a.visit_id
-, b.visit_id
-, b.sequence_number
-, a._date
-, a.listing_id
-, b.gift_idea_id
-, b.persona_id
+  , a._date
+  , a.listing_id
+  , b.gift_idea_id
+  , b.persona_id
+  , count(a.visit_id) as n_listing_views
+  , purchased_after_view
 from 
-	listing_views a
+	boe_listing_views a
 left join 
-	boe_clicks b
+	boe_agg b
 		on a.visit_id=b.visit_id
 		and a.listing_id=cast(b.listing_id as int64)
 		and a.boe_ref=b.boe_ref
-where a.boe_ref in ('boe_gift_mode_gift_idea_listings-1-6db9f5559fd204eb')
 group by all 
-order by 2 desc
+)
+-- , clicks_agg as (
+select 
+ _date
+  , visit_id
+  , listing_id
+  , gift_idea_id
+  , persona_id as page_id
+  , views
+  , purchased_after_view
+from 
+	boe_clicks
+union all
+select
+	_date
+	, visit_id
+  , listing_id
+  , gift_idea_id
+  , page_id
+  , a.listing_id
+  , coalesce(count(a.listing_id),0) as n_listing_views
+  , coalesce(max(a.purchased_after_view),0) as purchased_after_view
+-- )
