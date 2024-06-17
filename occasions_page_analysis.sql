@@ -2,7 +2,7 @@
 --create base dataset of events + in between events
 --------------------------------------------------------------------------------
 -- create base dataset of events 
-create or replace table `etsy-data-warehouse-dev.madelinecollins.mothers_day_events` 
+create or replace table `etsy-data-warehouse-dev.madelinecollins.occasion_page_events` 
 	as (
 with tmp as (
 select 
@@ -36,9 +36,9 @@ where
 )
 ;
 
---get inbetween events 
 
-create or replace table `etsy-data-warehouse-dev.madelinecollins.mothers_day_between_events`
+--get inbetween events 
+create or replace table `etsy-data-warehouse-dev.madelinecollins.occasion_page_between_events`
 	as (
 with events as (
 select 
@@ -52,7 +52,7 @@ select
 from 
 	`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
 join 
-	`etsy-data-warehouse-dev.madelinecollins.mothers_day_events` 
+	`etsy-data-warehouse-dev.madelinecollins.occasion_page_events` 
 using(visit_id)
 where 
 	date(_partitiontime) >= current_date - 30
@@ -66,7 +66,7 @@ select
 	, e.gift_idea_id
 	, e.sequence_number 
 from 
-	`etsy-data-warehouse-dev.madelinecollins.mothers_day_events` a
+	`etsy-data-warehouse-dev.madelinecollins.occasion_page_events` a
 left join 
 	events e
 on 
@@ -76,4 +76,3 @@ on
 	and (e.sequence_number < next_seq or next_seq is null)
 )
 ;
-
