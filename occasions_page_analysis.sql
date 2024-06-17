@@ -87,11 +87,11 @@ _date
 , visit_id
 , sequence_number
 , event_type
-, lead(event_type) over (partition by visit_id order by sequence_number) as next_page
+-- , lead(event_type) over (partition by visit_id order by sequence_number) as next_page
 from 
 	etsy-data-warehouse-prod.weblog.events e
 where _date >= current_date-30 
-and (event_type in ('gift_mode_occasions_page', 'gift_mode_persona','view_listing') 
+and (event_type in ('gift_mode_occasions_page', 'gift_mode_persona') 
 or (event_type in ('category_page_hub') and url like ('/c/gifts')) --category page hub gifts
 or (event_type in ('market') and regexp_contains(e.url, "(?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト")))--market page gifts
 group by all 
@@ -104,7 +104,7 @@ _date
 from events
 group by all
 )
--- , listing_views as (
+, listing_views as (
 select
 a._date
 	, a.referring_page_event --opted to find listing views this way bc market pages/ category pages dont have ref tag 
@@ -114,15 +114,27 @@ a._date
 from 
 	etsy-data-warehouse-prod.analytics.listing_views a
 inner join 	
-	(select _date, visit_id,sequence_number from events where event_type in ('view_listing')) b
-		using (visit_id, sequence_number)
+	(select _date, visit_id, sequence_number, event_type from events) b
+		on a.visit_id=b.visit_id
+		and a.referring_page_event=b.event_type
+		and a.referring_page_event_sequence_number=b.sequence_number
 where a._date >= current_date-30
--- ), listing_views_agg as (
--- select
--- 	referring_page_event	
--- 	, count(listing_id) as listing_views
--- 	, sum(purchased_after_view) as purchases
--- from listing_views
--- )
-
-
+), listing_views_agg as (
+select
+	_date
+	, referring_page_event	
+	, count(listing_id) as listing_views
+	, sum(purchased_after_view) as purchases
+from listing_views
+group by all
+)
+select
+	a.event_type
+	, sum(a.impressions) as listing_views
+	, sum(b.listing_views) as listing_views
+	, coalesce(b.purchases,0) as purchases
+from pageviews a
+left join listing_views_agg b
+	on a._date=b._date
+	and a.event_type=b.referring_page_event
+group by all
