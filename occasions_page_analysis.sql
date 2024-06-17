@@ -135,3 +135,9 @@ from pageviews a
 left join listing_views_agg b
 	on a.event_type=b.referring_page_event
 group by all
+	
+--------------------------------------------------------------------------------
+--look at 'module' clicks by listing ref tags 
+--------------------------------------------------------------------------------
+select 	split(ref_tag,"-")[safe_offset(1)], count(visit_id) as gift_idea_module_number from etsy-data-warehouse-prod.analytics.listing_views where ref_tag like ('gm_occasion_gift_idea_listings%') and _date >= current_Date-30 group by all
+ 
