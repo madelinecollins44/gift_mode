@@ -151,11 +151,48 @@ where
   ref_tag like ('gm_occasion_gift_idea_listings%') 
   and _date >= current_Date-30 group by all
 )
+, listing_agg as (
 select
- split(ref_tag,"-")[safe_offset(1)]
+ split(ref_tag,"-")[safe_offset(1)] as gift_idea_module_placement
  , count(listing_id) as listing_views
  , count(distinct listing_id) as listings_viewed
  , sum(purchased_after_view) as purchases 
 from listing_views
 group by all 
-  
+)
+, deliveries as (
+	select
+		date(_partitiontime) as _date
+		, visit_id
+		, sequence_number
+		, beacon.event_name as event_name
+		, (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
+    , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean
+    , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(1)] as gift_idea_module_placement
+
+	from
+		`etsy-visit-pipe-prod.canonical.visit_id_beacons`
+	where date(_partitiontime) >= current_date-5
+	  and beacon.event_name in ("recommendations_module_delivered",'recommendations_module_seen')
+	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%") -- mweb/ desktop occasions
+))
+, deliveries_agg as (
+select
+  gift_idea_module_placement
+  , count(case when event_name in ('recommendations_module_delivered') then module_placement end) as delivered
+  , count(case when event_name in ('recommendations_module_seen') then module_placement end) as seen
+  from deliveries
+  group by all
+)
+select
+a.delivered
+, a.seen
+, b.listing_views
+, b.listings_viewed
+, b.purchases 
+from deliveries_agg a
+left join listing_agg b using (gift_idea_module_placement)
+
+
+
+ 
