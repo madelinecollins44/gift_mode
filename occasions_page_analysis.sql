@@ -76,3 +76,53 @@ on
 	and (e.sequence_number < next_seq or next_seq is null)
 )
 ;
+
+--------------------------------------------------------------------------------
+--pageviews + lv rate + cr on similar pages for comparisons
+--------------------------------------------------------------------------------
+---click rate/ lv rate of page types
+with events as (
+select
+_date
+, visit_id
+, sequence_number
+, event_type
+, lead(event_type) over (partition by visit_id order by sequence_number) as next_page
+from 
+	etsy-data-warehouse-prod.weblog.events e
+where _date >= current_date-30 
+and (event_type in ('gift_mode_occasions_page', 'gift_mode_persona','view_listing') 
+or (event_type in ('category_page_hub') and url like ('/c/gifts')) --category page hub gifts
+or (event_type in ('market') and regexp_contains(e.url, "(?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト")))--market page gifts
+group by all 
+), pageviews as (
+select 
+_date
+, event_type 
+, count(visit_id) as impressions
+, count(distinct visit_id) as unique_visits  
+from events
+group by all
+)
+-- , listing_views as (
+select
+a._date
+	, a.referring_page_event --opted to find listing views this way bc market pages/ category pages dont have ref tag 
+	, a.visit_id
+	, a.listing_id
+	, a.purchased_after_view
+from 
+	etsy-data-warehouse-prod.analytics.listing_views a
+inner join 	
+	(select _date, visit_id,sequence_number from events where event_type in ('view_listing')) b
+		using (visit_id, sequence_number)
+where a._date >= current_date-30
+-- ), listing_views_agg as (
+-- select
+-- 	referring_page_event	
+-- 	, count(listing_id) as listing_views
+-- 	, sum(purchased_after_view) as purchases
+-- from listing_views
+-- )
+
+
