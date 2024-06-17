@@ -92,13 +92,13 @@ from
 	etsy-data-warehouse-prod.weblog.events e
 where _date >= current_date-30 
 and (event_type in ('gift_mode_occasions_page', 'gift_mode_persona') 
-or (event_type in ('category_page_hub') and url like ('/c/gifts')) --category page hub gifts
+or (event_type in ('category_page_hub') and url like ('%/c/gifts%')) --category page hub gifts
 or (event_type in ('market') and regexp_contains(e.url, "(?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト")))--market page gifts
 group by all 
-), pageviews as (
+)
+, pageviews as (
 select 
-_date
-, event_type 
+event_type 
 , count(visit_id) as impressions
 , count(distinct visit_id) as unique_visits  
 from events
@@ -106,8 +106,7 @@ group by all
 )
 , listing_views as (
 select
-a._date
-	, a.referring_page_event --opted to find listing views this way bc market pages/ category pages dont have ref tag 
+ a.referring_page_event --opted to find listing views this way bc market pages/ category pages dont have ref tag 
 	, a.visit_id
 	, a.listing_id
 	, a.purchased_after_view
@@ -121,8 +120,7 @@ inner join
 where a._date >= current_date-30
 ), listing_views_agg as (
 select
-	_date
-	, referring_page_event	
+	 referring_page_event	
 	, count(listing_id) as listing_views
 	, sum(purchased_after_view) as purchases
 from listing_views
@@ -130,11 +128,11 @@ group by all
 )
 select
 	a.event_type
-	, sum(a.impressions) as listing_views
+	, sum(a.impressions) as impressions
 	, sum(b.listing_views) as listing_views
 	, coalesce(b.purchases,0) as purchases
 from pageviews a
 left join listing_views_agg b
-	on a._date=b._date
-	and a.event_type=b.referring_page_event
+	on a.event_type=b.referring_page_event
 group by all
+
