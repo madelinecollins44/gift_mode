@@ -135,4 +135,3 @@ from pageviews a
 left join listing_views_agg b
 	on a.event_type=b.referring_page_event
 group by all
-
