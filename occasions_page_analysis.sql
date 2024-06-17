@@ -139,5 +139,23 @@ group by all
 --------------------------------------------------------------------------------
 --look at 'module' clicks by listing ref tags 
 --------------------------------------------------------------------------------
-select 	split(ref_tag,"-")[safe_offset(1)], count(visit_id) as gift_idea_module_number from etsy-data-warehouse-prod.analytics.listing_views where ref_tag like ('gm_occasion_gift_idea_listings%') and _date >= current_Date-30 group by all
- 
+with listing_views as (
+select 
+  ref_tag, 
+  visit_id, 
+  listing_id, 
+  purchased_after_view 
+from 
+  etsy-data-warehouse-prod.analytics.listing_views 
+where 
+  ref_tag like ('gm_occasion_gift_idea_listings%') 
+  and _date >= current_Date-30 group by all
+)
+select
+ split(ref_tag,"-")[safe_offset(1)]
+ , count(listing_id) as listing_views
+ , count(distinct listing_id) as listings_viewed
+ , sum(purchased_after_view) as purchases 
+from listing_views
+group by all 
+  
