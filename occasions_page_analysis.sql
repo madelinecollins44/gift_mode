@@ -2,7 +2,6 @@
 --create base dataset of events + in between events
 --------------------------------------------------------------------------------
 -- create base dataset of events 
-
 create or replace table `etsy-data-warehouse-dev.madelinecollins.mothers_day_events` 
 	as (
 with tmp as (
@@ -34,6 +33,47 @@ from
 	tmp
 where
 	event_type = "gift_mode_occasions_page"
+)
+;
+
+--get inbetween events 
+
+create or replace table `etsy-data-warehouse-dev.madelinecollins.mothers_day_between_events`
+	as (
+with events as (
+select 
+	date(_partitiontime) as _date 
+	, a.visit_id 
+	, beacon.event_name as event_type
+	, beacon.primary_event as page_view
+	, (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
+	, (select value from unnest(beacon.properties.key_value) where key = "gift_idea_id") as gift_idea_id
+	, a.sequence_number
+from 
+	`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
+join 
+	`etsy-data-warehouse-dev.madelinecollins.mothers_day_events` 
+using(visit_id)
+where 
+	date(_partitiontime) >= current_date - 30
+)
+select 
+	a._date 
+	, a.visit_id 
+	, a.sequence_number as primary_event_sequence
+	, e.event_type 
+	, e.module_placement
+	, e.gift_idea_id
+	, e.sequence_number 
+from 
+	`etsy-data-warehouse-dev.madelinecollins.mothers_day_events` a
+left join 
+	events e
+on 
+	a.visit_id = e.visit_id 
+	and e.page_view = false
+	and e.sequence_number > a.sequence_number
+	and (e.sequence_number < next_seq or next_seq is null)
 )
 ;
 
