@@ -81,25 +81,40 @@ on
 --pageviews + lv rate + cr on similar pages for comparisons
 --------------------------------------------------------------------------------
 ---click rate/ lv rate of page types
-with events as (
+with main_events as (
+select
+_date
+, visit_id
+, sequence_number
+, url
+, event_type
+, lead(event_type) over (partition by visit_id order by sequence_number) as next_page
+from 
+	etsy-data-warehouse-prod.weblog.events e
+where 
+	_date >= current_date-30 
+	and (page_view=1 or event_type is null)
+)
+, events as (
 select
 _date
 , visit_id
 , sequence_number
 , event_type
--- , lead(event_type) over (partition by visit_id order by sequence_number) as next_page
+, case when next_page is null then 1 else 0 end as exit 
 from 
-	etsy-data-warehouse-prod.weblog.events e
-where _date >= current_date-30 
-and (event_type in ('gift_mode_occasions_page', 'gift_mode_persona') 
-or (event_type in ('category_page_hub') and url like ('%/c/gifts%')) --category page hub gifts
-or (event_type in ('market') and regexp_contains(e.url, "(?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト")))--market page gifts
+	main_events
+where 
+	(event_type in ('gift_mode_occasions_page', 'gift_mode_persona') 
+	or (event_type in ('category_page_hub') and url like ('%/c/gifts%')) --category page hub gifts
+	or (event_type in ('market') and regexp_contains(url, "(?i)\\bgift|\\bcadeau|\\bregalo|\\bgeschenk|\\bprezent|ギフト")))--market page gifts
 group by all 
 )
 , pageviews as (
 select 
 event_type 
 , count(visit_id) as impressions
+, sum(exit) as exits
 , count(distinct visit_id) as unique_visits  
 from events
 group by all
@@ -129,12 +144,14 @@ group by all
 select
 	a.event_type
 	, sum(a.impressions) as impressions
+  , sum(a.exits) as exits
 	, sum(b.listing_views) as listing_views
 	, coalesce(b.purchases,0) as purchases
 from pageviews a
 left join listing_views_agg b
 	on a.event_type=b.referring_page_event
 group by all
+	
 	
 --------------------------------------------------------------------------------
 --look at 'module' clicks by listing ref tags 
