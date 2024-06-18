@@ -192,6 +192,47 @@ a.delivered
 , b.purchases 
 from deliveries_agg a
 left join listing_agg b using (gift_idea_module_placement)
+	
+--------------------------------------------------------------------------------
+--how far are people scrolling
+--------------------------------------------------------------------------------
+with deliveries as (
+	select
+		date(_partitiontime) as _date
+		, visit_id
+		, sequence_number
+		, beacon.event_name as event_name
+		, beacon.page_guid
+		, count(case when beacon.event_name in ('gift_mode_occasions_page') then sequence_number end) as gm_occasion_pageviews
+		, (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
+    , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean
+    , cast(split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(1)] as int64) as gift_idea_module_placement
+	from
+		`etsy-visit-pipe-prod.canonical.visit_id_beacons`
+	where date(_partitiontime) >= current_date-15
+	  and ((beacon.event_name in ('recommendations_module_seen') and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%")))
+		or beacon.event_name in ('gift_mode_occasions_page'))
+		-- and visit_id in ('76PF8gN_Oro1IaYzMZ7C4yixzy5v.1718634489107.1')
+group by all
+), agg as (
+select
+	_date
+	, visit_id
+	, sum(gm_occasion_pageviews) as gm_occasion_pageviews
+	, count(gift_idea_module_placement) as total_modules_seen
+	, max(gift_idea_module_placement) as highest_module_seen_in_visit
+from deliveries
+group by all
+)
+select
+	_date
+	, count(distinct visit_id) as unique_visits
+	, sum(gm_occasion_pageviews) as total_pageviews
+	, sum(total_modules_seen) as total_modules_seen
+	, avg(highest_module_seen_in_visit) as avg_max_module_seen_in_visit
+	, max(highest_module_seen_in_visit) as max_module_seen_in_visit
+from agg
+group by all 
 
 
 
