@@ -250,7 +250,19 @@ select
 from agg
 group by all 
 
-
+--------------------------------------------------------------------------------
+--find share of traffic to page by platform
+--------------------------------------------------------------------------------
+select
+platform
+, count(a.visit_id) as total_impressions
+, count(distinct a.visit_id) as total_visits
+, count(case when event_type in ('gift_mode_occasions_page') then a.visit_id end) as occasion_page_impressions
+, count(distinct case when event_type in ('gift_mode_occasions_page') then a.visit_id end) as occasion_page_visits
+from etsy-data-warehouse-prod.weblog.visits a
+inner join etsy-data-warehouse-prod.weblog.events b using (visit_id)
+where a._date >= current_Date-30
+group by all 
 
 
  
