@@ -92,7 +92,7 @@ _date
 from 
 	etsy-data-warehouse-prod.weblog.events e
 where 
-	_date >= current_date-30 
+	_date >= current_date-15 
 	and (page_view=1 or event_type is null)
 )
 , events as (
@@ -132,7 +132,7 @@ inner join
 		on a.visit_id=b.visit_id
 		and a.referring_page_event=b.event_type
 		and a.referring_page_event_sequence_number=b.sequence_number
-where a._date >= current_date-30
+where a._date >= current_date-15
 ), listing_views_agg as (
 select
 	 referring_page_event	
