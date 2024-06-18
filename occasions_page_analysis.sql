@@ -212,7 +212,6 @@ with deliveries as (
 	where date(_partitiontime) >= current_date-15
 	  and ((beacon.event_name in ('recommendations_module_seen') and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%")))
 		or beacon.event_name in ('gift_mode_occasions_page'))
-		-- and visit_id in ('76PF8gN_Oro1IaYzMZ7C4yixzy5v.1718634489107.1')
 group by all
 ), agg as (
 select
@@ -233,6 +232,7 @@ select
 	, max(highest_module_seen_in_visit) as max_module_seen_in_visit
 from agg
 group by all 
+
 
 
 
