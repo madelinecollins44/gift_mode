@@ -264,5 +264,13 @@ inner join etsy-data-warehouse-prod.weblog.events b using (visit_id)
 where a._date >= current_Date-30
 group by all 
 
+--overall exit rate
 
+select
+count(case when event_type in ('gift_mode_occasions_page') then a.visit_id end) as occasion_page_impressions
+, count(case when event_type in ('gift_mode_occasions_page') and next_page is null then a.visit_id end) as occasion_page_exit
+, count(distinct case when event_type in ('gift_mode_occasions_page') then a.visit_id end) as occasion_page_visits
+, count(distinct case when event_type in ('gift_mode_occasions_page') and next_page is null then a.visit_id end) as occasion_page_exit_visits
+from etsy-data-warehouse-dev.madelinecollins.occasion_page_events a
+group by all 
  
