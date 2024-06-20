@@ -273,4 +273,8 @@ count(case when event_type in ('gift_mode_occasions_page') then a.visit_id end) 
 , count(distinct case when event_type in ('gift_mode_occasions_page') and next_page is null then a.visit_id end) as occasion_page_exit_visits
 from etsy-data-warehouse-dev.madelinecollins.occasion_page_events a
 group by all 
+
+--------------------------------------------------------------------------------
+--performance of occasion pages
+--------------------------------------------------------------------------------
  
