@@ -82,7 +82,7 @@ where
 group by all
 );
 
---this table looks at visits with gift_mode specific ref_tags to primary pages 
+--this table looks at visits with gift_mode specific ref_tags to primary pages, includes listing views
 create or replace temporary table clicks as (
 with get_refs as (
 select 
