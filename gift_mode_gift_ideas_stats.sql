@@ -6,7 +6,7 @@ BEGIN
 
 declare last_date date;
 
-drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`;
+-- drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`;
 
 create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`  (
 	_date date
@@ -17,11 +17,13 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
 	, admin INT64
   , gift_idea_id STRING
   , gift_idea_title STRING
+  , creator STRING
   , delivery_page STRING
   , delivery_title STRING
   , unique_listings_delivered INT64
   , unique_visits INT64
   , total_impressions INT64
+  , total_listings_delivered INT64
   , visits_with_a_click int64
   , total_listing_views INT64
   , unique_listings_viewed INT64
@@ -42,12 +44,16 @@ create or replace temporary table gift_idea_names as (
 select
   initcap(replace(slug,'-',' ')) as name
   , cast(gift_idea_id as string) as gift_idea_id
+  , b.auth_username as creator
 from
-  etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_entity -- for everything from gems/ occasions 
+  etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_entity a -- for everything from gems/ occasions 
+left join 
+  etsy-data-warehouse-prod.etsy_aux.staff b on a.staff_id=b.id
 union all 
 select
   name as name
   , semaphore_guid as gift_idea_id
+  , 'n/a' as creator
 from etsy-data-warehouse-dev.knowledge_base.gift_mode_semaphore_gift_idea -- for all persona related gift ideas 
 ); 
 
@@ -68,13 +74,14 @@ with all_gift_idea_deliveries as (
 	from
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons`
 	where date(_partitiontime) >= last_date
-	  and beacon.event_name = "recommendations_module_delivered"
-	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_%") -- mweb/ desktop occasions
+	  and (beacon.event_name = "recommendations_module_delivered"
+	  and (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_listings%") -- mweb/ desktop occasions
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%") -- mweb/ desktop personas
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_gift_idea_listings%") -- boe personas
-))
+        or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_search_listings%")) -- boe search 
+)
 , deliveries as (
-select  ---------------------- this is for mweb/ desktop occasions
+select  ----------------- this is for mweb/ desktop occasions: mobile_web has 8 listings, desktop has 16 listings
   a._date 
   , 'gift_mode_occasions_page' as page_type
   , a.occasion_id as page_id 
@@ -92,7 +99,7 @@ where
   module_placement_clean in ('gift_mode_occasion_gift_idea_listings') 
 group by all
 union all
-select  ---------------------- this is for all personas
+select  ----------------- this is for all personas: mobile_web has 4 or 6 listings, desktop has 8, boe has 6 
   _date 
   , 'gift_mode_persona' as page_type
   , a.persona_id as page_id
@@ -107,7 +114,25 @@ from
 cross join 
    unnest(split(listing_ids, ',')) as listing_id
 where 
-  module_placement_clean in ('gift_mode_gift_idea_listings','boe_gift_mode_gift_idea_listings') --currently, boe does not have gift_idea_id here
+  module_placement_clean in ('gift_mode_gift_idea_listings','boe_gift_mode_gift_idea_listings')
+group by all
+union all
+select  ----------------- this is for boe search, has 15 gift ideas with 12 listings each 
+  _date 
+  , 'gift_mode_search' as page_type
+  , a.persona_id as page_id
+  , a.gift_idea_id
+  , a.visit_id
+  , a.sequence_number
+  , concat(a.visit_id, '-', a.sequence_number) AS unique_id
+  , a.module_placement_clean
+  , listing_id
+from 
+  all_gift_idea_deliveries a
+cross join 
+   unnest(split(listing_ids, ',')) as listing_id
+where 
+  module_placement_clean in ('boe_gift_mode_search_listings')
 group by all
 )
 select
@@ -123,6 +148,7 @@ select
   , count(distinct b.listing_id) as unique_listings
   , count(distinct v.visit_id) as unique_visits
 	, count(distinct b.unique_id) as total_impressions -- this is each visits specific delivery of gift ideas
+  , count(listing_id) as total_listings_delivered -- will be used for listing rate
 from
 	etsy-data-warehouse-prod.weblog.visits v
 inner join
@@ -156,10 +182,10 @@ where
 )
 ;
 
---create table to find listing views + assocaited persona/occasion ids from referring page events
+--create table to find listing views + associated persona/occasion ids from referring page events
 create or replace temporary table clicks as (
 with get_ref_tags as (
-select -- this is only for mweb+desktop
+select
     date(a._partitiontime) as _date
     , a.visit_id
     , a.sequence_number
@@ -180,7 +206,9 @@ from
 where 
   date(_partitiontime) >= last_date
   and ((beacon.event_name in ('view_listing') and beacon.loc like ('%gift_idea_id%')) -- comes from gift mode, for web
-  or (beacon.event_name in ('recommendations_module_delivered') and (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ('boe_gift_mode_gift_idea_listings%')))
+  or (beacon.event_name in ('recommendations_module_delivered') 
+    and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ('boe_gift_mode_gift_idea_listings%') 
+    or ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ('%gift_mode_search_listings%')))))
 )
 , web_clicks as (
 select
@@ -202,11 +230,11 @@ inner join -- only looks at the listings
 	get_ref_tags b 
     on a._date=b._date
     and a.visit_id=b.visit_id
-    and a.listing_id=cast(b.listing_id as int64)
+    and a.listing_id=safe_cast(b.listing_id as int64)
     and a.sequence_number=b.sequence_number
 left join 
   etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_relation c
-    on b.web_gift_idea_id=cast(c.gift_idea_id as string)
+    on b.web_gift_idea_id=safe_cast(c.gift_idea_id as string)
 where
 	a._date >= last_date
   and b.event_name in ('view_listing')
@@ -245,7 +273,7 @@ inner join
     and a.sequence_number=e.sequence_number
 where 
 	a._date >= last_date
-  and e.referrer like ('%boe_gift_mode_gift_idea_listings%')
+  and (e.referrer like ('%boe_gift_mode_gift_idea_listings%') or e.referrer like ('%gift_mode_search_listings-%'))
   and a.platform in ('boe')
 group by all 
 )
@@ -263,7 +291,7 @@ from
 left join 
 	boe_agg b
 		on a.visit_id=b.visit_id
-		and a.listing_id=cast(b.listing_id as int64)
+		and a.listing_id=safe_cast(b.listing_id as int64)
 		and a.boe_ref=b.boe_ref
 group by all 
 )
@@ -331,6 +359,7 @@ select
 	, a.admin
   , a.gift_idea_id
   , e.name as gift_idea_title
+  , e.creator
   , a.page_type as delivery_page
   , case 
       when c.name is not null then c.name
@@ -341,6 +370,7 @@ select
   , coalesce(unique_listings,0) as unique_listings_delivered
   , coalesce(unique_visits,0) as unique_visits
 	, coalesce(total_impressions,0) as total_impressions 
+  , coalesce(total_listings_delivered,0) as total_listings_delivered
   -- listing view metrics 
   , coalesce(visits_with_a_click,0) as visits_with_a_click
   , coalesce(total_listing_views,0) as total_listing_views
