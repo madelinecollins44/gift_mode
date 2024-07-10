@@ -37,7 +37,7 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
 --  if last_date is null then set last_date= (select min(_date)-1 from `etsy-data-warehouse-prod.weblog.events`);
 --  end if;
 
-set last_date= current_date - 1;
+set last_date= current_date - 5;
 
 --create table to pull all gift_ideas from both occasions and personas 
 create or replace temporary table gift_idea_names as (
@@ -81,10 +81,15 @@ with all_gift_idea_deliveries as (
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_search_listings%")) -- boe search 
 )
 , deliveries as (
-select  ----------------- this is for mweb/ desktop occasions: mobile_web has 8 listings, desktop has 16 listings
+select 
   a._date 
-  , 'gift_mode_occasions_page' as page_type
-  , a.occasion_id as page_id 
+  , case 
+      when module_placement_clean in ('gift_mode_occasion_gift_idea_listings') then 'gift_mode_occasions_page' 
+      when module_placement_clean in ('gift_mode_gift_idea_listings','boe_gift_mode_gift_idea_listings') then 'gift_mode_persona' 
+      when module_placement_clean in ('boe_gift_mode_search_listings') then 'gift_mode_search' 
+      else 'error'
+    end as page_type
+  , coalesce(a.occasion_id, a.persona_id) as page_id
   , a.gift_idea_id
   , a.visit_id
   , a.sequence_number
@@ -95,44 +100,6 @@ from
   all_gift_idea_deliveries a
 cross join 
    unnest(split(listing_ids, ',')) as listing_id
-where 
-  module_placement_clean in ('gift_mode_occasion_gift_idea_listings') 
-group by all
-union all
-select  ----------------- this is for all personas: mobile_web has 4 or 6 listings, desktop has 8, boe has 6 
-  _date 
-  , 'gift_mode_persona' as page_type
-  , a.persona_id as page_id
-  , a.gift_idea_id
-  , a.visit_id
-  , a.sequence_number
-  , concat(a.visit_id, '-', a.sequence_number) AS unique_id
-  , a.module_placement_clean
-  , listing_id
-from 
-  all_gift_idea_deliveries a
-cross join 
-   unnest(split(listing_ids, ',')) as listing_id
-where 
-  module_placement_clean in ('gift_mode_gift_idea_listings','boe_gift_mode_gift_idea_listings')
-group by all
-union all
-select  ----------------- this is for boe search, has 15 gift ideas with 12 listings each 
-  _date 
-  , 'gift_mode_search' as page_type
-  , a.persona_id as page_id
-  , a.gift_idea_id
-  , a.visit_id
-  , a.sequence_number
-  , concat(a.visit_id, '-', a.sequence_number) AS unique_id
-  , a.module_placement_clean
-  , listing_id
-from 
-  all_gift_idea_deliveries a
-cross join 
-   unnest(split(listing_ids, ',')) as listing_id
-where 
-  module_placement_clean in ('boe_gift_mode_search_listings')
 group by all
 )
 select
@@ -192,7 +159,7 @@ select
     , beacon.event_name as event_name
     --this is for boe, pull outs module_placement and content_source_uid for gift idea deliveries 
     , (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
-    , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean
+    , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean -- this will be used as page type for boe
     , (select value from unnest(beacon.properties.key_value) where key = "content_source_uid") as content_source_uid
     , (select value from unnest(beacon.properties.key_value) where key = "gift_idea_id") as gift_idea_id
     , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
@@ -202,7 +169,7 @@ select
     , (select value from unnest(beacon.properties.key_value) where key = "listing_id") as listing_id
     , regexp_substr(beacon.loc, "gift_idea_id=([^*&?%]+)") as web_gift_idea_id-- grabs gift idea
     , regexp_substr(beacon.loc, "persona_id=([^*&?%]+)") as web_persona_id -- grabs persona_id, need to pull persona_id here bc gift_idea_ids are NOT unique to personas
-    , split(regexp_substr(beacon.loc, "ref=([^*&?%]+)"), "-")[safe_offset(0)] as page_type	-- exists on web only
+    , split(regexp_substr(beacon.loc, "ref=([^*&?%]+)"), "-")[safe_offset(0)] as page_type
 from 
   etsy-visit-pipe-prod.canonical.visit_id_beacons 
 where 
@@ -242,7 +209,7 @@ where
 	a._date >= last_date
   and b.event_name in ('view_listing')
   and a.platform in ('mobile_web','desktop')
-  and b.page_type in ('gm_occasion_gift_idea_listings','gm_gift_idea_listings')
+  and b.page_type in ('gm_occasion_gift_idea_listings','gm_gift_idea_listings') -- excludes other ref_tags (others had counts of 1)
 group by all
 ), boe_agg as (
 select
