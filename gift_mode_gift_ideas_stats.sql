@@ -238,7 +238,6 @@ where
 select 
 	a._date 
 	, a.visit_id 
-	, a.sequence_number 
 	, safe_cast(a.listing_id as int64) as listing_id 
 	, regexp_replace(regexp_substr(e.referrer, "ref=([^*&?%|]+)"), '-[^-]*$', '') AS boe_ref -- need it this way to get content uid
   , coalesce(count(a.listing_id),0) as n_listing_views
