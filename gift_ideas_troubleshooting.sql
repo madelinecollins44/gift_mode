@@ -59,6 +59,51 @@ select _date, gift_idea_id, delivery_page, sum(total_impressions) from beacons_t
  where gift_idea_id in ('aed9f86b-edca-4d14-8695-6b1798245dcf')
 and _date >= current_date-2  group by all
 
+
+---checked + confirmed these raw numbers match what is in looker 
+	with beacons_table_raw as (
+	select
+		date(_partitiontime) as _date
+		, visit_id
+		, sequence_number
+  , concat(visit_id, '-', sequence_number) AS unique_id
+		, beacon.event_name as event_name
+		, (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
+    , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean
+		, (select value from unnest(beacon.properties.key_value) where key = "gift_idea_id") as gift_idea_id 
+    , (select value from unnest(beacon.properties.key_value) where key = "listing_ids") as listing_ids
+    , (select value from unnest(beacon.properties.key_value) where key = "occasion_id") as occasion_id
+    , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
+	from
+		`etsy-visit-pipe-prod.canonical.visit_id_beacons`
+	where date(_partitiontime) >= current_date-10
+	  and (beacon.event_name = "recommendations_module_delivered")
+	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_listings%") -- mweb/ desktop occasions
+        or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%") -- mweb/ desktop personas
+        or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_gift_idea_listings%") -- boe personas
+        or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_search_listings%")) -- boe search 
+)
+, beacons_table as (
+select
+  gift_idea_id
+  , _date
+  , count(distinct unique_id) AS total_impressions
+    , case 
+      when module_placement_clean in ('gift_mode_occasion_gift_idea_listings') then 'gift_mode_occasions_page' 
+      when module_placement_clean in ('gift_mode_gift_idea_listings','boe_gift_mode_gift_idea_listings') then 'gift_mode_persona' 
+      when module_placement_clean in ('boe_gift_mode_search_listings') then 'gift_mode_search' 
+      else 'error'
+      end as delivery_page
+from beacons_table_raw
+ where gift_idea_id in ('22ed2427-d820-45a2-aafc-859dc249d620','81716753-3264-44e0-b56d-8be4fbaa6929','fb3dc615-a696-4605-957f-affcbf5256f9')
+and _date = '2024-07-08'
+group by all
+)
+select gift_idea_id, delivery_page, sum(total_impressions) from beacons_table group by all
+-- select 
+-- -- impressions persona 3159 7/9
+-- -- impressions gift_mode_search 249 7/9
+
 ________________________________________________________
 --check to make sure raw data from beacons table matches what is getting put out in rollup
 ________________________________________________________
