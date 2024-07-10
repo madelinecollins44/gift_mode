@@ -1,5 +1,16 @@
 
 ******NARROWED IT DOWN TO ISSUE BEING IN FINAL JOIN -- test indivial gift idea to see where issue is makes sense so must be in join
+select page_type, sum(total_impressions) from etsy-bigquery-adhoc-prod._script50c2b9b7c20584e70ce84eac7c2f99ab89ae89e9.rec_mod
+ where gift_idea_id in ('fb3dc615-a696-4605-957f-affcbf5256f9')
+and _date= '2024-07-07' group by all
+	--persona: 3338
+	--search: 252
+
+select delivery_page, sum(total_impressions) from etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats
+ where gift_idea_id in ('fb3dc615-a696-4605-957f-affcbf5256f9')
+and _date= '2024-07-07' group by all
+	--persona: 20460
+	--search: 1512
 ________________________________________________________
 --check to make sure raw data from beacons table matches what is getting put out in rollup
 ________________________________________________________
