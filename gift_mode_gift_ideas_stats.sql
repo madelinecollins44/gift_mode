@@ -6,7 +6,7 @@ BEGIN
 
 declare last_date date;
 
--- drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`;
+drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`;
 
 create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats`  (
 	_date date
@@ -16,6 +16,7 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_
 	, top_channel STRING
 	, admin INT64
   , gift_idea_id STRING
+  , page_id STRING
   , gift_idea_title STRING
   , creator STRING
   , delivery_page STRING
@@ -64,6 +65,7 @@ with all_gift_idea_deliveries as (
 		date(_partitiontime) as _date
 		, visit_id
 		, sequence_number
+      , concat(visit_id, '-', sequence_number) AS unique_id
 		, beacon.event_name as event_name
 		, (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
     , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean
@@ -101,9 +103,9 @@ from
 cross join 
    unnest(split(listing_ids, ',')) as listing_id
 group by all
-)
+) 
 select
-	v._date
+	b._date
 	, v.platform
   , v.browser_platform
 	, v.region
@@ -113,12 +115,12 @@ select
 	, b.page_type
   , b.page_id
   , count(distinct b.listing_id) as unique_listings
-  , count(distinct v.visit_id) as unique_visits
+  , count(distinct b.visit_id) as unique_visits
 	, count(distinct b.unique_id) as total_impressions -- this is each visits specific delivery of gift ideas
-  , count(listing_id) as total_listings_delivered -- will be used for listing rate
-from
+  , count(b.listing_id) as total_listings_delivered -- will be used for listing rate
+from 
 	etsy-data-warehouse-prod.weblog.visits v
-inner join
+left join 
 	deliveries b
     using(_date, visit_id)
 where
@@ -339,6 +341,7 @@ select
 	, a.top_channel
 	, a.admin
   , a.gift_idea_id
+  , a.page_id
   , e.name as gift_idea_title
   , e.creator
   , a.page_type as delivery_page
@@ -381,7 +384,7 @@ left join
 left join 
   gift_idea_names e
     on a.gift_idea_id= e.gift_idea_id
-    ---later, will be able to use etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_relation as source of truth beyond next few weeks
+--     ---later, will be able to use etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_relation as source of truth beyond next few weeks
 );
 
 END
