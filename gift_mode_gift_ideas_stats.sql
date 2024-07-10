@@ -73,9 +73,9 @@ with all_gift_idea_deliveries as (
     , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
 	from
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons`
-	where date(_partitiontime) >= last_date
-	  and (beacon.event_name = "recommendations_module_delivered"
-	  and (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_listings%") -- mweb/ desktop occasions
+	where date(_partitiontime) >= current_date-2
+	  and (beacon.event_name = "recommendations_module_delivered")
+	  and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_occasion_gift_idea_listings%") -- mweb/ desktop occasions
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("gift_mode_gift_idea_listings%") -- mweb/ desktop personas
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_gift_idea_listings%") -- boe personas
         or (select value from unnest(beacon.properties.key_value) where key = "module_placement") like ("boe_gift_mode_search_listings%")) -- boe search 
