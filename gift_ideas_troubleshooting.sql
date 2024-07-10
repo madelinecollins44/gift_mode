@@ -265,3 +265,197 @@ select page_type, sum(total_impressions) from agg where gift_idea_id in ('fb3dc6
 and _date= '2024-07-07' group by all
 --3338 impressions persona
 -------THESE MATCH--ISSUE MUST BE IN JOIN 
+
+
+
+________________________________________________________
+--TESTING CLICKS 
+________________________________________________________
+---web
+with get_ref_tags as (
+select
+    date(_partitiontime) as _date
+    , visit_id
+    , sequence_number
+    , beacon.event_name as event_name
+    --this is for boe, pull outs module_placement and content_source_uid for gift idea deliveries 
+    , (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
+    , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean -- this will be used as page type for boe
+    , (select value from unnest(beacon.properties.key_value) where key = "content_source_uid") as content_source_uid
+    , (select value from unnest(beacon.properties.key_value) where key = "gift_idea_id") as gift_idea_id
+    , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
+    , (select value from unnest(beacon.properties.key_value) where key = "listing_ids") as listing_ids
+--this is all for web, pulls out gift idea + persona id from loc on listing page
+    , beacon.loc as loc
+    , (select value from unnest(beacon.properties.key_value) where key = "listing_id") as listing_id
+    , regexp_substr(beacon.loc, "gift_idea_id=([^*&?%]+)") as web_gift_idea_id-- grabs gift idea
+    , regexp_substr(beacon.loc, "persona_id=([^*&?%]+)") as web_persona_id -- grabs persona_id, need to pull persona_id here bc gift_idea_ids are NOT unique to personas
+    , split(regexp_substr(beacon.loc, "ref=([^*&?%]+)"), "-")[safe_offset(0)] as page_type
+from 
+  etsy-visit-pipe-prod.canonical.visit_id_beacons 
+where 
+  date(_partitiontime) >= current_date-5
+  and ((beacon.event_name in ('view_listing') and beacon.loc like ('%gift_idea_id%')) -- comes from gift mode, for web
+      or (beacon.event_name in ('recommendations_module_delivered') 
+        and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ('boe_gift_mode_gift_idea_listings%') 
+        or ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ('%gift_mode_search_listings%')))))
+)
+  select _date, count(listing_id) from get_ref_tags
+ where web_gift_idea_id in ('aed9f86b-edca-4d14-8695-6b1798245dcf')
+  and event_name in ('view_listing')
+  and page_type in ('gm_occasion_gift_idea_listings','gm_gift_idea_listings')
+  group by all	
+-- 2024-07-08:10
+-- 2024-07-09:8
+-- 2024-07-07: 8	
+-- 2024-07-10:4	
+-- 2024-07-05:10	
+-- 2024-07-06:3
+
+
+-- ), web_clicks as (
+-- select
+-- 	b._date
+-- 	, b.visit_id
+--   , case
+--       when b.page_type in ('gm_gift_idea_listings') then 'gift_mode_persona'
+--       when b.page_type in ('gm_occasion_gift_idea_listings') then 'gift_mode_occasions_page'
+--     end as page_type
+--   , b.web_gift_idea_id as gift_idea_id
+--   , case 
+--       when b.web_persona_id is not null then web_persona_id
+--       else cast(c.other_id as string) -- can join gift_idea_ids to occasion_ids since gift_idea_ids ARE unique to occasion_ids
+--     end as page_id 
+--   , safe_cast(b.listing_id as int64) as listing_id
+--   , coalesce(count(b.listing_id),0) as n_listing_views
+--   , coalesce(max(a.purchased_after_view),0) as purchased_after_view
+-- from
+-- 	etsy-data-warehouse-prod.analytics.listing_views a
+-- inner join -- only looks at the listings 
+-- 	get_ref_tags b 
+--     on a._date=b._date
+--     and a.visit_id=b.visit_id
+--     and a.listing_id=safe_cast(b.listing_id as int64)
+--     and a.sequence_number=b.sequence_number
+-- left join 
+--   etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_relation c
+--     on b.web_gift_idea_id=safe_cast(c.gift_idea_id as string)
+-- where
+-- 	a._date >= current_date-5
+--   and b.event_name in ('view_listing')
+--   and a.platform in ('mobile_web','desktop')
+--   and b.page_type in ('gm_occasion_gift_idea_listings','gm_gift_idea_listings') -- excludes other ref_tags (others had counts of 1)
+-- group by all
+-- )
+--   --check by finding listing views of this gift id on web
+select _date, delivery_page, sum(total_listing_views) from etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats
+ where gift_idea_id in ('aed9f86b-edca-4d14-8695-6b1798245dcf')
+and _date >= current_date-4
+and platform in ('mobile_web','desktop') group by all
+-- 2024-07-07: 7	
+-- 2024-07-08:10	
+-- 2024-07-09:3	
+-- 2024-07-06:3
+
+-- select _date, delivery_page, sum(total_listing_views) from etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats
+--  where gift_idea_id in ('aed9f86b-edca-4d14-8695-6b1798245dcf')
+-- and _date >= current_date-4
+-- and platform in ('mobile_web','desktop') group by all
+-- 	--persona: 20460
+-- 	--search: 1512
+
+  select _date, sum(total_listing_views) from etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats 
+where platform in ('mobile_web','desktop') and _date>= current_date-5  group by all order by 1 desc
+--2024-07-09:4916
+--2024-07-08:4462
+--2024-07-07:3954
+--2024-07-06:3663
+--2024-07-05:3850
+
+-- select 4916/5044 --97% accuracy 
+
+with get_ref_tags as (
+select
+    date(_partitiontime) as _date
+    , visit_id
+    , sequence_number
+    , beacon.event_name as event_name
+    --this is for boe, pull outs module_placement and content_source_uid for gift idea deliveries 
+    , (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
+    , split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean -- this will be used as page type for boe
+    , (select value from unnest(beacon.properties.key_value) where key = "content_source_uid") as content_source_uid
+    , (select value from unnest(beacon.properties.key_value) where key = "gift_idea_id") as gift_idea_id
+    , (select value from unnest(beacon.properties.key_value) where key = "persona_id") as persona_id
+    , (select value from unnest(beacon.properties.key_value) where key = "listing_ids") as listing_ids
+--this is all for web, pulls out gift idea + persona id from loc on listing page
+    , beacon.loc as loc
+    , (select value from unnest(beacon.properties.key_value) where key = "listing_id") as listing_id
+    , regexp_substr(beacon.loc, "gift_idea_id=([^*&?%]+)") as web_gift_idea_id-- grabs gift idea
+    , regexp_substr(beacon.loc, "persona_id=([^*&?%]+)") as web_persona_id -- grabs persona_id, need to pull persona_id here bc gift_idea_ids are NOT unique to personas
+    , split(regexp_substr(beacon.loc, "ref=([^*&?%]+)"), "-")[safe_offset(0)] as page_type
+from 
+  etsy-visit-pipe-prod.canonical.visit_id_beacons 
+where 
+  date(_partitiontime) >= current_date-5
+  and ((beacon.event_name in ('view_listing') and beacon.loc like ('%gift_idea_id%')) -- comes from gift mode, for web
+      or (beacon.event_name in ('recommendations_module_delivered') 
+        and ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ('boe_gift_mode_gift_idea_listings%') 
+        or ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like ('%gift_mode_search_listings%')))))
+), web_clicks as (
+select
+	b._date
+	, b.visit_id
+  , case
+      when b.page_type in ('gm_gift_idea_listings') then 'gift_mode_persona'
+      when b.page_type in ('gm_occasion_gift_idea_listings') then 'gift_mode_occasions_page'
+    end as page_type
+  , b.web_gift_idea_id as gift_idea_id
+  , case 
+      when b.web_persona_id is not null then web_persona_id
+      else cast(c.other_id as string) -- can join gift_idea_ids to occasion_ids since gift_idea_ids ARE unique to occasion_ids
+    end as page_id 
+  , safe_cast(b.listing_id as int64) as listing_id
+  , coalesce(count(b.listing_id),0) as n_listing_views
+  , coalesce(max(a.purchased_after_view),0) as purchased_after_view
+from
+	etsy-data-warehouse-prod.analytics.listing_views a
+inner join -- only looks at the listings 
+	get_ref_tags b 
+    on a._date=b._date
+    and a.visit_id=b.visit_id
+    and a.listing_id=safe_cast(b.listing_id as int64)
+    and a.sequence_number=b.sequence_number
+left join 
+  etsy-data-warehouse-prod.etsy_aux.gift_mode_gift_idea_relation c
+    on b.web_gift_idea_id=safe_cast(c.gift_idea_id as string)
+where
+	a._date >= current_date-5
+  and b.event_name in ('view_listing')
+  and a.platform in ('mobile_web','desktop')
+  and b.page_type in ('gm_occasion_gift_idea_listings','gm_gift_idea_listings') -- excludes other ref_tags (others had counts of 1)
+group by all
+)
+select _date, sum(n_listing_views) from web_clicks 
+where _date>= current_date-5 group by all order by 1 desc
+--2024-07-09:5044
+--2024-07-08:4589
+--2024-07-07:4125
+--2024-07-06:3759
+--2024-07-05:3759
+
+
+--   select a.* 
+--   from web_clicks a 
+--   -- inner join etsy-data-warehouse-prod.weblog.visits v using (visit_id)
+--  where web_gift_idea_id in ('aed9f86b-edca-4d14-8695-6b1798245dcf')
+--   and event_name in ('view_listing')
+--   and _date = '2024-07-09'
+--   -- and v._date>= current_date-5
+--   -- and platform in ('mobile_web','desktop')
+--   and page_type in ('gm_occasion_gift_idea_listings','gm_gift_idea_listings')
+--   group by all
+
+  --check by finding listing views of this gift id on web
+--   select _date, sum(n_listing_views) from web_clicks
+--  where gift_idea_id in ('aed9f86b-edca-4d14-8695-6b1798245dcf')
+-- and _date >= current_date-2 
