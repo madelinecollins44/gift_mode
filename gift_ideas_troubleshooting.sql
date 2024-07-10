@@ -570,8 +570,8 @@ where _date>= current_date-5 group by all order by 1 desc
 
   select _date, sum(total_listing_views) from etsy-data-warehouse-dev.rollups.gift_mode_gift_idea_stats 
 where platform in ('boe') and _date>= current_date-5  group by all order by 1 desc
---2024-07-09:20592
---2024-07-08:20404
---2024-07-07:21592
---2024-07-06:21524
---2024-07-05:18686
+--2024-07-09:28524
+--2024-07-08:28106
+--2024-07-07:29483
+--2024-07-06:28873
+--2024-07-05:25339
