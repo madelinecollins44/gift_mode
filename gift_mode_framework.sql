@@ -42,14 +42,16 @@ set last_date= current_date - 1;
 
 
 --this table grabs visits across gift mode related content and core gift mode pages 
----THINK I AM MISSING MODULE_PLACEMENT FOR WHERE GM LISITNGS ARE DELIVERED ON LISTING PAGES, picking up ref tags but not in this table
 create or replace temporary table visits as (
-  with get_recmods_events as (
+with get_recmods_events as (
   select
 		date(_partitiontime) as _date
 		, visit_id
 		, sequence_number
-    , beacon.primary_event as primary_event
+    , case 
+        when beacon.primary_event = true then 'true'
+        else 'false'
+      end as primary_event
 		, beacon.event_name as event_name
 		, (select value from unnest(beacon.properties.key_value) where key = 'module_placement') as module_placement
 	from
@@ -71,8 +73,8 @@ select
   , a.top_channel 
   , visit_id
   , count(visit_id) as impressions
-  , max(case when event_name like ('%gift_mode%') and primary_event=true then 1 else 0 end) as core_visits
-  , count(case when event_name like ('%gift_mode%') and primary_event=true then visit_id end) as core_impressions
+  , count(case when event_name like ('%gift_mode%') and primary_event='true' then visit_id end) as core_visits
+  , count(case when event_name like ('%gift_mode%') and primary_event='true' then visit_id end) as core_impressions
 from 
   etsy-data-warehouse-prod.weblog.visits a
 inner join 
@@ -80,8 +82,7 @@ inner join
     using (_date, visit_id)
 where 
   a._date >= last_date
-group by all
-);
+group by all 
 
 --this table looks at visits with gift_mode specific ref_tags to primary pages, includes listing views
 create or replace temporary table clicks as (
