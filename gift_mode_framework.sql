@@ -49,6 +49,7 @@ create or replace temporary table visits as (
 		date(_partitiontime) as _date
 		, visit_id
 		, sequence_number
+    , beacon.primary_event as primary_event
 		, beacon.event_name as event_name
 		, (select value from unnest(beacon.properties.key_value) where key = 'module_placement') as module_placement
 	from
@@ -70,8 +71,8 @@ select
   , a.top_channel 
   , visit_id
   , count(visit_id) as impressions
-  , max(case when event_name like ('gift_mode%') then 1 else 0 end) as core_visits
-  , count(case when event_name like ('gift_mode%') then visit_id end) as core_impressions
+  , max(case when event_name like ('%gift_mode%') and primary_event=true then 1 else 0 end) as core_visits
+  , count(case when event_name like ('%gift_mode%') and primary_event=true then visit_id end) as core_impressions
 from 
   etsy-data-warehouse-prod.weblog.visits a
 inner join 
