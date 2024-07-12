@@ -40,7 +40,18 @@ inner join
 where 
   a._date >= current_date-2
 group by all
+---8C14J5SIBHQSvIuXFkFEu5gCzWpH.1720629452511.1: 1 core visit, 1 core impression, 8 gm impressions
+---PX5W6YuPQEKhhunLQbDpXA.1720585837344.1: 372 core visit
+--UayHm-slODTgbxWpR4S3QQc2znjI.1720724737747.1: 255 core visits
 
+--test 
+select 
+  _date
+  , visit_id
+  , count(case when event_type like ('%gift_mode%') and page_view =1 then sequence_number end) as core_gm_views
+from etsy-data-warehouse-prod.weblog.events 
+where visit_id in ('UayHm-slODTgbxWpR4S3QQc2znjI.1720724737747.1','PX5W6YuPQEKhhunLQbDpXA.1720585837344.1','8C14J5SIBHQSvIuXFkFEu5gCzWpH.1720629452511.1')
+group by all 
 
 ---------------------------------------------------------------
 --find visit_id and check against weblog.events, listing views
