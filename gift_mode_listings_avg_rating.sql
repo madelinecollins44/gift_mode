@@ -1,7 +1,6 @@
 ___________________________________________________
 BUILD QUERY-- shop level reviews 
 ___________________________________________________
-  
 -- get delivered listings
 with listing_deliveries as (
 select
@@ -26,7 +25,7 @@ and (
 ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like "boe_gift_mode_occasion_gift_idea_listings%") -- boe, occasions 
 ))
 
-  -- agg delivered listings, cross join listings
+  -- agg delivered listings
 , all_listings as (
 select
 _date
@@ -39,7 +38,7 @@ unnest((split(regexp_replace(listing_ids,"\\[|\\]", ""), ","))) b
 )
 
 --gets shop_ids for all the listings, will be use to find avg rating score next 
-, add_shop_ids as (
+, delivered_shops as (
 select 
   a.listing_id
   , a.visit_id
@@ -47,40 +46,78 @@ select
 from 
   all_listings a
 left join 
-  etsy-data-warehouse-prod.rollups.active_listing_basics b using (listing_id)
+  etsy-data-warehouse-prod.listing_mart.listings b using (listing_id)
 )
 
 --gets avg shop review score for shops that have been delivered in gift mode in last year
 , shop_ratings as (
 select
   str.shop_id
-  , avg(safe_cast(str.rating as numeric)) as rating
+  , avg(safe_cast(str.rating as numeric)) as avg_rating
 from 
-  all_listings l
+  delivered_shops l
 left join etsy-data-warehouse-prod.etsy_shard.shop_transaction_review str 
-	on str.listing_id = l.listing_id 
+	on str.shop_id = l.shop_id 
 where
 	is_deleted = 0
   and create_date > unix_seconds(timestamp(date_sub(current_date, interval 1 year))) -- reviews from the last year 
 group by all
 )
-  
+
   --bring it all together
 select 
- case
-		when mod(rating, 1) < 0.25 then 0
-		when mod(rating, 1) <= 0.75 then 0.5
-		else 1.0
-	end as rounded_star_1_year
-  , count(distinct a.listing_id) as unique_listings
+  round(b.avg_rating) as rounded_rating
+  , count(distinct a.listing_id) as unique_listings_delivered
+  , count(distinct a.shop_id) as unique_shops_delivered
+  , count(distinct b.shop_id) as unique_shops_ratings
   , count(visit_id) as deliveries
 from
-  add_shop_ids a
+  delivered_shops a
 left join 
-  shop_ratings  b
+  shop_ratings b
     using (shop_id)
 group by all
 
+
+-------find avg score for all listings 
+with all_data as (
+select
+  shop_id
+  , listing_id
+  , safe_cast(rating as numeric) as rating
+from 
+  etsy-data-warehouse-prod.etsy_shard.shop_transaction_review 
+where create_date > unix_seconds(timestamp(date_sub(current_date, interval 1 year)))
+)
+, avg_score as (
+select
+  shop_id
+  , avg(rating) as avg_rating
+from all_data
+group by all 
+)
+select
+  round(avg_rating) as rounded_rating
+  , count(distinct shop_id) as unique_shops
+  , count(distinct listing_id) as unique_listings
+from 
+  avg_score
+left join 
+  all_data 
+  using (shop_id)
+group by all 
+
+___________________________________________________
+TESTING SHOP LEVEL
+___________________________________________________
+
+
+------listings, shops without shop reviews
+--1361784585, 	
+
+
+
+	
 ___________________________________________________
 BUILD QUERY-- listing level reviews 
 ___________________________________________________
