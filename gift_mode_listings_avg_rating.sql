@@ -1,6 +1,89 @@
-_________________
-BUILD QUERY
-_________________
+___________________________________________________
+BUILD QUERY-- shop level reviews 
+___________________________________________________
+  
+-- get delivered listings
+with listing_deliveries as (
+select
+date(_partitiontime) as _date
+, visit_id
+, (select value from unnest(beacon.properties.key_value) where key = "module_placement") as module_placement
+, split((select value from unnest(beacon.properties.key_value) where key = "module_placement"), "-")[safe_offset(0)] as module_placement_clean
+, (select value from unnest(beacon.properties.key_value) where key = "listing_ids") as listing_ids
+from
+`etsy-visit-pipe-prod.canonical.visit_id_beacons`
+where
+date(_partitiontime) >= current_date-7
+and
+beacon.event_name = "recommendations_module_delivered"
+and (
+((select value from unnest(beacon.properties.key_value) where key = "module_placement") like "gm_gift_idea_listings%") or -- web, personas
+((select value from unnest(beacon.properties.key_value) where key = "module_placement") like "gm_deluxe_persona_card%") or -- web, quiz
+((select value from unnest(beacon.properties.key_value) where key = "module_placement") like "gift_mode_occasion_gift_idea_listings%") or --web, occasions
+((select value from unnest(beacon.properties.key_value) where key = "module_placement") like "boe_gift_mode_gift_idea_listings%") or -- boe, personas
+-- ((select value from unnest(beacon.properties.key_value) where key = "module_placement") like "boe_gift_mode_quiz_results_listings%") or -- boe, quiz
+((select value from unnest(beacon.properties.key_value) where key = "module_placement") like "boe_gift_mode_search_listings%") or -- boe, search
+((select value from unnest(beacon.properties.key_value) where key = "module_placement") like "boe_gift_mode_occasion_gift_idea_listings%") -- boe, occasions 
+))
+
+  -- agg delivered listings, cross join listings
+, all_listings as (
+select
+_date
+, safe_cast(b as int64) as listing_id
+, visit_id
+from
+  listing_deliveries
+cross join
+unnest((split(regexp_replace(listing_ids,"\\[|\\]", ""), ","))) b
+)
+
+--gets shop_ids for all the listings, will be use to find avg rating score next 
+, add_shop_ids as (
+select 
+  a.listing_id
+  , a.visit_id
+  , b.shop_id
+from 
+  all_listings a
+left join 
+  etsy-data-warehouse-prod.rollups.active_listing_basics b using (listing_id)
+)
+
+--gets avg shop review score for shops that have been delivered in gift mode in last year
+, shop_ratings as (
+select
+  str.shop_id
+  , avg(safe_cast(str.rating as numeric)) as rating
+from 
+  all_listings l
+left join etsy-data-warehouse-prod.etsy_shard.shop_transaction_review str 
+	on str.listing_id = l.listing_id 
+where
+	is_deleted = 0
+  and create_date > unix_seconds(timestamp(date_sub(current_date, interval 1 year))) -- reviews from the last year 
+group by all
+)
+  
+  --bring it all together
+select 
+ case
+		when mod(rating, 1) < 0.25 then 0
+		when mod(rating, 1) <= 0.75 then 0.5
+		else 1.0
+	end as rounded_star_1_year
+  , count(distinct a.listing_id) as unique_listings
+  , count(visit_id) as deliveries
+from
+  add_shop_ids a
+left join 
+  shop_ratings  b
+    using (shop_id)
+group by all
+
+___________________________________________________
+BUILD QUERY-- listing level reviews 
+___________________________________________________
 -- get delivered listings
 with listing_deliveries as (
 select
