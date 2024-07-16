@@ -1,7 +1,6 @@
 _________________
 BUILD QUERY
 _________________
- 
 -- get delivered listings
 with listing_deliveries as (
 select
@@ -50,7 +49,6 @@ group by all
   --bring it all together
 select 
   round(b.avg_rating) as rounded_rating
-  , (round(b.avg_rating)  * 2) / 2 as rounded_half_rating
   , count(distinct a.listing_id) as unique_listings
   , count(visit_id) as deliveries
 from
@@ -61,6 +59,20 @@ left join
 group by all 
 
 
+
+ -----------find share across all listing reviews
+ with agg as (select
+  listing_id
+  , round(avg(safe_cast(rating as int64))) as avg_rating
+from etsy-data-warehouse-prod.quality.transaction_reviews
+group by all 
+)
+select
+round(avg_rating) as avg_rating
+, count(distinct listing_id)
+from agg 
+group by all 
+ 
 _________________
 TESTING
 _________________
@@ -139,10 +151,13 @@ left join
   etsy-data-warehouse-prod.transaction_mart.all_transactions   b
     using (listing_id)
 group by all 
--- 949140370
--- 719757659
--- 698825500
--- 1260332210
--- 1282150710
--- 1278931530
--- 1093461096
+--
+
+--listings without transactions examples
+------ 949140370
+------ 719757659
+------ 698825500
+------ 1260332210
+------ 1282150710
+------ 1278931530
+------ 1093461096
