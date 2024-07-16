@@ -107,10 +107,54 @@ left join
   using (shop_id)
 group by all 
 
+
+---all shops without reviews
+with shops_with_ratings as (
+select
+  shop_id
+  , safe_cast(rating as numeric) as rating
+from 
+  etsy-data-warehouse-prod.etsy_shard.shop_transaction_review 
+where create_date > unix_seconds(timestamp(date_sub(current_date, interval 1 year)))
+)
+, all_shops as (
+select
+  shop_id
+  , listing_id
+from 
+  etsy-data-warehouse-prod.rollups.active_listing_basics
+)
+, avg_score as (
+select
+  shop_id
+  , avg(rating) as avg_rating
+from shops_with_ratings
+group by all 
+)
+select
+  round(avg_rating) as rounded_rating
+  , count(distinct a.shop_id) as unique_shops
+  , count(distinct a.listing_id) as unique_listings
+from 
+  all_shops a
+left join 
+  avg_score b
+  using (shop_id)
+group by all 
+	
 ___________________________________________________
 TESTING SHOP LEVEL
 ___________________________________________________
-
+select
+  shop_id, 
+  avg(safe_cast(rating as numeric)) as avg_rating
+from 
+  etsy-data-warehouse-prod.etsy_shard.shop_transaction_review str 
+where
+	is_deleted = 0
+  and create_date > unix_seconds(timestamp(date_sub(current_date, interval 1 year)))
+  and shop_id in (38941705,15554482,26263376,33878037,12361451)
+group by all
 
 ------listings, shops without shop reviews
 --1361784585, 	
