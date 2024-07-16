@@ -48,7 +48,16 @@ group by all
 
   --bring it all together
 select 
-  round(b.avg_rating) as rounded_rating
+  -- round(b.avg_rating) as rounded_rating
+  case 
+    when b.listing_id is null then 'not_purchased'
+    when round(b.avg_rating) is null then 'not_reviwed'
+    when round(b.avg_rating) =1 then '1'
+    when round(b.avg_rating) =2 then '2' 
+    when round(b.avg_rating) =3 then '3'
+    when round(b.avg_rating) =4 then '4'
+    when round(b.avg_rating) =5 then '5'
+  end as rounded_rating
   , count(distinct a.listing_id) as unique_listings
   , count(visit_id) as deliveries
 from
