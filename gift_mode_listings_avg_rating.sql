@@ -1,3 +1,7 @@
+_________________
+BUILD QUERY
+_________________
+ 
 -- get delivered listings
 with listing_deliveries as (
 select
@@ -55,3 +59,33 @@ left join
   reviews  b
     using (listing_id)
 group by all 
+
+
+_________________
+TESTING
+_________________
+--how many listings have reviews? how does that compare to gift mode share?
+  with agg as (
+select 
+listing_id 
+, sum(has_review) as reviews
+from etsy-data-warehouse-prod.quality.transaction_reviews
+group by all
+)
+select
+  count(distinct case when reviews > 0 then listing_id end) as listings_with_reviews
+  ,  count(distinct case when reviews = 0 then listing_id end) as listings_without_reviews
+  , count(distinct listing_id) as total_listings
+from agg 
+-- no reviews: 169633809, 55.7%
+-- reviews: 134726452, 44.3%
+-- total listings: 304360261
+
+--are the listings without ratings not purchased?
+-- 949140370
+-- 719757659
+-- 698825500
+-- 1260332210
+-- 1282150710
+-- 1278931530
+-- 1093461096
