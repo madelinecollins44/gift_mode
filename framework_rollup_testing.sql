@@ -113,3 +113,12 @@ select * from agg where core_listing =0 and core_listing=1
 --find visit_id and check against weblog.events, listing views
 ---------------------------------------------------------------
 select * from etsy-data-warehouse-prod.analytics.listing_views where visit_id in ('OQ6dNJLCEJqWBW9wQ_PlWH8UWtRF.1721580349328.1','3_nbaW1zxlj_Gqlt2yuKGIFLPBVL.1721574776318.1') and _date >= current_date-3
+-- these are listing_suggested views
+
+select * from etsy-data-warehouse-prod.analytics.listing_views 
+where visit_id in ('n-XXQOaYHiAOGkTE_A-RX2OMbbYB.1721550018504.1') 
+and _date >= current_date-3
+and listing_id = 1143385396
+--n-XXQOaYHiAOGkTE_A-RX2OMbbYB.1721550018504.1, 1143385396, 6400 listing views
+-- this is weird but correct
+
