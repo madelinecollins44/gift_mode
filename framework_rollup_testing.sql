@@ -128,3 +128,19 @@ group by all
 
 --n-XXQOaYHiAOGkTE_A-RX2OMbbYB.1721550018504.1, 1143385396, 6400 listing views , WRONG FROM ROLLUP
 --counted 80 here
+
+------look at total day counts
+select _date, count(visit_id), count(distinct listing_id) from etsy-data-warehouse-prod.analytics.listing_views 
+where _date >= current_date-3
+and ref_tag like ('gm%')
+group by all
+-- --7/20: 9975, 
+-- --7/19: 10995, 6154
+-- --7/21: 10411, 6088
+
+select _date, sum(total_core_listing_views), sum(core_listings_viewed) from `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis` group by all
+--7/20: 9293, 7876
+--7/19: 10462, 8465
+--7/21: 10050, 8474
+
+--95% accuracy??
