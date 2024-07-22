@@ -119,6 +119,12 @@ select * from etsy-data-warehouse-prod.analytics.listing_views
 where visit_id in ('n-XXQOaYHiAOGkTE_A-RX2OMbbYB.1721550018504.1') 
 and _date >= current_date-3
 and listing_id = 1143385396
---shoudl be 80
---originally from rollup: n-XXQOaYHiAOGkTE_A-RX2OMbbYB.1721550018504.1, 1143385396, 6400 listing views
-----wrong, realized need to fix
+
+select count(visit_id), ref_tag from etsy-data-warehouse-prod.analytics.listing_views 
+where visit_id in ('n-XXQOaYHiAOGkTE_A-RX2OMbbYB.1721550018504.1') 
+and _date >= current_date-3
+and listing_id = 1143385396
+group by all
+
+--n-XXQOaYHiAOGkTE_A-RX2OMbbYB.1721550018504.1, 1143385396, 6400 listing views , WRONG FROM ROLLUP
+--counted 80 here
