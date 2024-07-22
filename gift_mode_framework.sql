@@ -38,7 +38,7 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpi
 --  if last_date is null then set last_date= (select min(_date)-1 from `etsy-data-warehouse-prod.weblog.events`);
 --  end if;
 
-set last_date= current_date - 1;
+set last_date= current_date - 5;
 
 
 --this table grabs visits across gift mode related content and core gift mode pages 
@@ -71,6 +71,7 @@ select
 	, a.region  
   , a.is_admin_visit as admin 
   , a.top_channel 
+  , a.landing_event
   , visit_id
   , count(visit_id) as impressions
   , count(case when event_name like ('%gift_mode%') and primary_event='true' then visit_id end) as core_visits
@@ -83,6 +84,7 @@ inner join
 where 
   a._date >= last_date
 group by all 
+);
 
 --this table looks at visits with gift_mode specific ref_tags to primary pages, includes listing views
 create or replace temporary table clicks as (
@@ -97,7 +99,7 @@ select
 from 
 	`etsy-data-warehouse-prod`.weblog.events e 
 where 
-	_date >= current_date-1
+	_date >= last_date
   and page_view=1 -- user goes to new page, showing a click to a different page
     and (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
       	or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
@@ -241,6 +243,7 @@ select
 	, a.region  
   , a.admin 
   , a.top_channel 
+  , a.landing_event
   --visits and impression metrics 
   , count(distinct a.visit_id) as total_gm_visits
   , sum(a.impressions) as total_gm_impressions
