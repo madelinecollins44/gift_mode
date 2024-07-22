@@ -3,7 +3,7 @@ begin
 
 declare last_date date;
 
-drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis`;
+-- drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis`;
 
 create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis` (
   	_date DATE
@@ -12,6 +12,7 @@ create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpi
 	, region  STRING
   , admin int64
   , top_channel STRING
+  , landing_event STRING
   , total_gm_visits int64
   , total_gm_impressions int64
   , core_gm_visits int64
