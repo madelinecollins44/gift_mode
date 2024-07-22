@@ -1,4 +1,4 @@
----can i make a temp table with all necessary events and update there instead of inquery as more events are added?
+---testing: https://github.com/madelinecollins44/gift_mode/blob/main/framework_rollup_testing.sql
 begin
 
 declare last_date date;
@@ -280,3 +280,4 @@ group by all
 );
 
 end
+
