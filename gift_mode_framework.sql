@@ -1,4 +1,4 @@
----testing: https://github.com/madelinecollins44/gift_mode/blob/main/framework_rollup_testing.sql
+---can i make a temp table with all necessary events and update there instead of inquery as more events are added?
 begin
 
 declare last_date date;
@@ -191,7 +191,7 @@ select
   , a.listing_id
   , a.visit_id
   , coalesce(count(distinct a.sequence_number),0) as n_listing_views
-  , max(case when a.ref_tag like ('gm%') then 1 else 0 end) as core_listing
+  , max(case when a.ref_tag like ('gm%') or referrer like ('boe_gift_mode%') then 1 else 0 end) as core_listing
 	, max(c.purchased_after_view) as purchased_after_view
 from 
   listing_views a
