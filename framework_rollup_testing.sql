@@ -1,4 +1,4 @@
----can i make a temp table with all necessary events and update there instead of inquery as more events are added?
+---testing: https://github.com/madelinecollins44/gift_mode/blob/main/gift_mode_framework.sql
 begin
 
 declare last_date date;
@@ -64,7 +64,7 @@ with get_recmods_events as (
 	      or (beacon.event_name = 'recommendations_module_delivered' -- rec mods from other outside gift mode 
             and (select value from unnest(beacon.properties.key_value) where key = 'module_placement') in     ('lp_suggested_personas_related','homescreen_gift_mode_personas') --related personas module on listing page, web AND app home popular personas module delivered, boe
             or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas%'))--related/ popular persona module on market page, web
-            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('homescreen_gift_mode_personas')))--gift mode module on app home, boe
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('%homescreen_gift_mode_personas'))--gift mode module on app home, boe
 )
 select 
 	b._date  
@@ -102,22 +102,26 @@ from
 	`etsy-data-warehouse-prod`.weblog.events e 
 where 
 	_date >= last_date
-  and page_view=1 -- user goes to new page, showing a click to a different page
-    and (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
+  and 
+  --this is for web. clicks that go to new page with gm related ref tag
+    ((page_view=1 
+        and ((ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
       	or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
       	or ref_tag like ('gm%') -- mostly everything else 
       	or ref_tag like ('%GiftMode%') --Gift Teaser promo banner on hub, web
       	or ref_tag like ('hp_gm%') -- Shop by occasion on homepage, web
       	or ref_tag like ('GiftTeaser%') -- Skinny Banner (Mother's Day), web
       	or ref_tag like ('hub_stashgrid_module%') --featured persona on hub page, web NEED CLARIFICATION ON THIS BC SEEMS BROAD
-      	or ref_tag like ('listing_suggested_persona%')) -- Related personas module on listing page, web
+      	or ref_tag like ('listing_suggested_persona%')))) -- Related personas module on listing page, web
+  -- this is for boe, measures any tap event
+  or event_type in ('gift_mode_%_tapped'))
 )
 select 
 	_date 
 	, visit_id 
   , count(visit_id) as clicks
   , count(case when event_type not in ('view_listing') then visit_id end) as non_listing_clicks
-  , count(case when ref_tag like ('hub_stashgrid_module%') then visit_id end) as hub_clicks
+  -- , count(case when ref_tag like ('hub_stashgrid_module%') then visit_id end) as hub_clicks
 from get_refs 
 group by all 
 );
@@ -252,7 +256,7 @@ select
   , count(distinct b.visit_id) visits_with_gm_click
   , sum(b.clicks) as total_gm_clicks
   , sum(b.non_listing_clicks) as non_listing_clicks
-  , sum(b.hub_clicks) as hub_clicks
+  -- , sum(b.hub_clicks) as hub_clicks
   --listing metrics 
   , coalesce(count(distinct case when c.visit_with_purchase>0 then c.visit_id end),0) as unique_visits_with_purchase
   , coalesce(count(distinct case when c.visit_with_core_purchase>0 then c.visit_id end),0) as unique_visits_with_core_purchase
