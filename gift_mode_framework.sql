@@ -1,4 +1,4 @@
----testing: https://github.com/madelinecollins44/gift_mode/blob/main/framework_rollup_testing.sql
+---can i make a temp table with all necessary events and update there instead of inquery as more events are added?
 begin
 
 declare last_date date;
@@ -63,7 +63,8 @@ with get_recmods_events as (
       (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%') --catpures most gm content + core
 	      or (beacon.event_name = 'recommendations_module_delivered' -- rec mods from other outside gift mode 
             and (select value from unnest(beacon.properties.key_value) where key = 'module_placement') in     ('lp_suggested_personas_related','homescreen_gift_mode_personas') --related personas module on listing page, web AND app home popular personas module delivered, boe
-            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas%')))--related/ popular persona module on market page, web
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas%'))--related/ popular persona module on market page, web
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('%homescreen_gift_mode_personas'))--gift mode module on app home, boe
 )
 select 
 	b._date  
@@ -94,22 +95,23 @@ select
 	_date 
 	, visit_id 
 	, sequence_number 
-	-- , regexp_substr(e.referrer, "ref=([^*&?%|]+)") as boe_ref 
+	, regexp_substr(e.referrer, "ref=([^*&?%|]+)") as boe_ref 
 	, ref_tag
   , event_type
 from 
 	`etsy-data-warehouse-prod`.weblog.events e 
 where 
 	_date >= last_date
-  and page_view=1 -- user goes to new page, showing a click to a different page
-    and (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
+  and ((page_view=1 --this is for web. clicks that go to new page 
+        and ((ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
       	or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
       	or ref_tag like ('gm%') -- mostly everything else 
       	or ref_tag like ('%GiftMode%') --Gift Teaser promo banner on hub, web
       	or ref_tag like ('hp_gm%') -- Shop by occasion on homepage, web
       	or ref_tag like ('GiftTeaser%') -- Skinny Banner (Mother's Day), web
       	or ref_tag like ('hub_stashgrid_module%') --featured persona on hub page, web NEED CLARIFICATION ON THIS BC SEEMS BROAD
-      	or ref_tag like ('listing_suggested_persona%')) -- Related personas module on listing page, web
+      	or ref_tag like ('listing_suggested_persona%')))) -- Related personas module on listing page, web
+  or event_type in ('gift_mode_%_tapped')) -- taps on anything from gift mode, boe
 )
 select 
 	_date 
@@ -187,17 +189,14 @@ where
 )
 , agg as (
 select
-	b._date  
+	a._date  
   , a.listing_id
   , a.visit_id
   , coalesce(count(distinct a.sequence_number),0) as n_listing_views
-  , max(case when a.ref_tag like ('gm%') or referrer like ('boe_gift_mode%') then 1 else 0 end) as core_listing
+  , max(case when a.ref_tag like ('gm%') or boe_ref like ('boe_gift_mode%') then 1 else 0 end) as core_listing
 	, max(c.purchased_after_view) as purchased_after_view
 from 
   listing_views a
-inner join 
-  etsy-data-warehouse-prod.weblog.visits b
-    using (_date, visit_id)
 left join 
   `etsy-data-warehouse-prod`.analytics.listing_views c
     on a.listing_id=c.listing_id
@@ -205,7 +204,7 @@ left join
     and a._date=c._date
     and a.sequence_number=a.sequence_number 
 where 
-  b._date >= last_date
+  c._date >= last_date
 group by all
 )
 select
@@ -280,4 +279,3 @@ group by all
 );
 
 end
-
