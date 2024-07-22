@@ -3,7 +3,7 @@ begin
 
 declare last_date date;
 
--- drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis`;
+drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis`;
 
 create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis` (
   	_date DATE
@@ -190,7 +190,7 @@ select
 	b._date  
   , a.listing_id
   , a.visit_id
-  , coalesce(count(*),0) as n_listing_views
+  , coalesce(count(distinct a.sequence_number),0) as n_listing_views
   , max(case when a.ref_tag like ('gm%') then 1 else 0 end) as core_listing
 	, max(c.purchased_after_view) as purchased_after_view
 from 
