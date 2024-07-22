@@ -250,7 +250,7 @@ select
   --visits and impression metrics 
   , count(distinct a.visit_id) as total_gm_visits
   , sum(a.impressions) as total_gm_impressions
-  , count(distinct case when a.core_visits > 0 then visit_id) as core_gm_visits
+  , count(distinct case when a.core_visits > 0 then visit_id end) as core_gm_visits
   , sum(a.core_impressions) as core_gm_impressions
   --click metrics 
   , count(distinct b.visit_id) visits_with_gm_click
