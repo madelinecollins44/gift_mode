@@ -112,3 +112,4 @@ select * from agg where core_listing =0 and core_listing=1
 ---------------------------------------------------------------
 --find visit_id and check against weblog.events, listing views
 ---------------------------------------------------------------
+select * from etsy-data-warehouse-prod.analytics.listing_views where visit_id in ('OQ6dNJLCEJqWBW9wQ_PlWH8UWtRF.1721580349328.1','3_nbaW1zxlj_Gqlt2yuKGIFLPBVL.1721574776318.1') and _date >= current_date-3
