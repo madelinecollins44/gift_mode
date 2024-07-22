@@ -1,25 +1,70 @@
+---can i make a temp table with all necessary events and update there instead of inquery as more events are added?
+begin
 
----------------------------------------------------------------
---find visit_id and check against weblog.events, impressions
----------------------------------------------------------------
---impressions
-ith get_recmods_events as (
+declare last_date date;
+
+drop table if exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis`;
+
+create table if not exists `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis` (
+  	_date DATE
+	, platform STRING
+  , browser_platform STRING
+	, region  STRING
+  , admin int64
+  , top_channel STRING
+  , landing_event STRING
+  , total_gm_visits int64
+  , total_gm_impressions int64
+  , core_gm_visits int64
+  , core_gm_impressions int64
+  , visits_with_gm_click int64
+  , total_gm_clicks int64
+  , non_listing_clicks int64
+  , hub_clicks int64
+  , unique_visits_with_purchase int64
+  , unique_visits_with_core_purchase int64
+  , total_listing_views int64
+  , total_core_listing_views int64
+  , listings_viewed int64
+  , core_listings_viewed int64
+  , visits_with_core_listing_view int64
+  , total_purchased_listings int64
+  , total_purchased_core_listings int64
+ 	, unique_transactions int64
+	, attr_gms NUMERIC 
+);
+
+-- in case of day 1, backfill for 30 days
+-- set last_date= (select max(_date) from `etsy-data-warehouse-prod.rollups.gift_mode_gift_idea_stats`);
+--  if last_date is null then set last_date= (select min(_date)-1 from `etsy-data-warehouse-prod.weblog.events`);
+--  end if;
+
+set last_date= current_date - 5;
+
+
+--this table grabs visits across gift mode related content and core gift mode pages 
+create or replace temporary table visits as (
+with get_recmods_events as (
   select
 		date(_partitiontime) as _date
 		, visit_id
 		, sequence_number
-    , beacon.primary_event as primary_event
+    , case 
+        when beacon.primary_event = true then 'true'
+        else 'false'
+      end as primary_event
 		, beacon.event_name as event_name
 		, (select value from unnest(beacon.properties.key_value) where key = 'module_placement') as module_placement
 	from
 		`etsy-visit-pipe-prod.canonical.visit_id_beacons` a
 	where 
-    date(_partitiontime) >= current_date-5
+    date(_partitiontime) >= last_date
     and --events
       (beacon.event_name like ('%gm_%') or beacon.event_name like ('%gift_mode%') --catpures most gm content + core
 	      or (beacon.event_name = 'recommendations_module_delivered' -- rec mods from other outside gift mode 
             and (select value from unnest(beacon.properties.key_value) where key = 'module_placement') in     ('lp_suggested_personas_related','homescreen_gift_mode_personas') --related personas module on listing page, web AND app home popular personas module delivered, boe
-            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas%')))--related/ popular persona module on market page, web
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('market_gift_personas%'))--related/ popular persona module on market page, web
+            or (select value from unnest(beacon.properties.key_value) where key = 'module_placement') like ('homescreen_gift_mode_personas')))--gift mode module on app home, boe
 )
 select 
 	b._date  
@@ -28,35 +73,95 @@ select
 	, a.region  
   , a.is_admin_visit as admin 
   , a.top_channel 
+  , a.landing_event
   , visit_id
   , count(visit_id) as impressions
-  , max(case when event_name like ('%gift_mode%') and primary_event=true then 1 else 0 end) as core_visits
-  , count(case when event_name like ('%gift_mode%') and primary_event=true then visit_id end) as core_impressions
+  , count(case when event_name like ('%gift_mode%') and primary_event='true' then visit_id end) as core_visits
+  , count(case when event_name like ('%gift_mode%') and primary_event='true' then visit_id end) as core_impressions
 from 
   etsy-data-warehouse-prod.weblog.visits a
 inner join 
   get_recmods_events b 
     using (_date, visit_id)
 where 
-  a._date >= current_date-2
-group by all
----8C14J5SIBHQSvIuXFkFEu5gCzWpH.1720629452511.1: 1 core visit, 1 core impression, 8 gm impressions
----PX5W6YuPQEKhhunLQbDpXA.1720585837344.1: 372 core visit
---UayHm-slODTgbxWpR4S3QQc2znjI.1720724737747.1: 255 core visits
-
---test 
-select 
-  _date
-  , visit_id
-  , count(case when event_type like ('%gift_mode%') and page_view =1 then sequence_number end) as core_gm_views
-from etsy-data-warehouse-prod.weblog.events 
-where visit_id in ('UayHm-slODTgbxWpR4S3QQc2znjI.1720724737747.1','PX5W6YuPQEKhhunLQbDpXA.1720585837344.1','8C14J5SIBHQSvIuXFkFEu5gCzWpH.1720629452511.1')
+  a._date >= last_date
 group by all 
+);
 
+--this table looks at visits with gift_mode specific ref_tags to primary pages, includes listing views
+create or replace temporary table clicks as (
+with get_refs as (
+select 
+	_date 
+	, visit_id 
+	, sequence_number 
+	-- , regexp_substr(e.referrer, "ref=([^*&?%|]+)") as boe_ref 
+	, ref_tag
+  , event_type
+from 
+	`etsy-data-warehouse-prod`.weblog.events e 
+where 
+	_date >= last_date
+  and page_view=1 -- user goes to new page, showing a click to a different page
+    and (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
+      	or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%') -- Onsite Promo Banner (Mother's Day/ Father's Day), web
+      	or ref_tag like ('gm%') -- mostly everything else 
+      	or ref_tag like ('%GiftMode%') --Gift Teaser promo banner on hub, web
+      	or ref_tag like ('hp_gm%') -- Shop by occasion on homepage, web
+      	or ref_tag like ('GiftTeaser%') -- Skinny Banner (Mother's Day), web
+      	or ref_tag like ('hub_stashgrid_module%') --featured persona on hub page, web NEED CLARIFICATION ON THIS BC SEEMS BROAD
+      	or ref_tag like ('listing_suggested_persona%')) -- Related personas module on listing page, web
+)
+select 
+	_date 
+	, visit_id 
+  , count(visit_id) as clicks
+  , count(case when event_type not in ('view_listing') then visit_id end) as non_listing_clicks
+  , count(case when ref_tag like ('hub_stashgrid_module%') then visit_id end) as hub_clicks
+from get_refs 
+group by all 
+);
+    --banners + other ingresses
+    --   'hp_gm_shop_by_occasion_module' -- Shop by occasion on homepage, web
+	  --   , 'listing_suggested_personas_related' --Related personas module/ personas variant, web
+	  --   , 'hub_GiftMode' --Gift Teaser promo banner on hub, web
+    --   , 'GiftTeaser_MDAY24_Skinny_Sitewide' -- Skinny Banner (Mother's Day), web
+    --   , 'gm_market_personas_query_related' --Related personas module on market page, web
+    --   , 'gm_market_personas_popular'--popular personas module on market page, web
+    --   , 'gm-hp-banner' -- homepage banner gift mode ingress clicked, web
+    --   --ref tags on core pages
+    --   , 'gm_popular_personas' --Popular gift ideas persona card clicked from gift mode home, web
+    --   , 'gm_popular_gift_listings' --Popular gifts listing card clicked from gift mode home, 
+    --   , 'gm-global-nav'-- Global nav item with text on web
+    -- -- 'like' ref tags from banners + ingresses
+	  --   or (ref_tag like ('hp_promo_secondary_042224_US_Gifts_%')-- Onsite Promo Banner (Mother's Day/ Father's Day), web
+    --   or ref_tag like ('hp_promo_tertiary_042224_US_Gifts_%')-- Onsite Promo Banner (Mother's Day/ Father's Day), web
+    --   or ref_tag like ('gm-hp-banner-persona%') -- persona card on homepage banner clicked, web
 
-__________________________________________________________________________________________
---make sure ref tags make sense-- core vs non core (most will be core)
-__________________________________________________________________________________________
+--this table looks at all gift mode related listing views + purchases 
+create or replace temporary table listing_gms as (
+select
+	tv.date as _date
+	, tv.visit_id
+	, tv.platform_app as platform
+	, tv.transaction_id
+	, t.listing_id
+	, tg.trans_gms_net
+from
+	`etsy-data-warehouse-prod`.transaction_mart.transactions_visits tv
+join
+	`etsy-data-warehouse-prod`.transaction_mart.transactions_gms_by_trans tg
+using(transaction_id)
+join
+	`etsy-data-warehouse-prod`.transaction_mart.all_transactions t
+on
+	tv.transaction_id = t.transaction_id
+where
+	tv.date >= last_date
+)
+;
+
+create or replace temporary table listing_views as (
 with listing_views as (
 select 
 	_date 
@@ -68,7 +173,7 @@ select
 from 
 	`etsy-data-warehouse-prod`.weblog.events e 
 where 
-	_date >= current_date-1
+	_date >= last_date
 	and event_type = "view_listing"
   and ((ref_tag like ('gm_%') or ref_tag like ('listing_suggested_persona%')) -- nowhere a user can see a GM listing from outside a core page from heather
       or referrer like ('boe_gift_mode%')) 
@@ -83,16 +188,14 @@ where
 )
 , agg as (
 select
-	b._date  
+	a._date  
   , a.listing_id
   , a.visit_id
-  , coalesce(count(*),0) as n_listing_views
-  , max(case when a.ref_tag like ('gm%') then 1 else 0 end) as core_listing
+  , coalesce(count(distinct a.sequence_number),0) as n_listing_views
+  , max(case when a.ref_tag like ('gm%') or boe_ref like ('boe_gift_mode%') then 1 else 0 end) as core_listing
+	, max(c.purchased_after_view) as purchased_after_view
 from 
   listing_views a
-inner join 
-  etsy-data-warehouse-prod.weblog.visits b
-    using (_date, visit_id)
 left join 
   `etsy-data-warehouse-prod`.analytics.listing_views c
     on a.listing_id=c.listing_id
@@ -100,47 +203,78 @@ left join
     and a._date=c._date
     and a.sequence_number=a.sequence_number 
 where 
-  b._date >= current_date-5
+  c._date >= last_date
 group by all
 )
-select * from agg where core_listing =0 and core_listing=1
-----no core 
---OQ6dNJLCEJqWBW9wQ_PlWH8UWtRF.1721580349328.1, 1330600135, listing_suggested_persona_listings_related-3
---3_nbaW1zxlj_Gqlt2yuKGIFLPBVL.1721574776318.1, 1409391892, listing_suggested_persona_listings_related-3
+select
+	a._date
+  , a.visit_id
+	, sum(n_listing_views) as total_listing_views
+  , sum(case when core_listing > 0 then n_listing_views end) as total_core_listing_views
+  , count(distinct a.listing_id) as listings_viewed
+  , count(distinct case when core_listing>0 then a.listing_id end) as core_listings_viewed
+  , max(case when core_listing > 0 then 1 else 0 end) as visit_with_core_listing_view
+  , sum(a.purchased_after_view) as total_purchased_listings
+  , sum(case when core_listing > 0 then a.purchased_after_view end) as total_purchased_core_listings
+  , max(case when purchased_after_view > 0 then 1 else 0 end) as visit_with_purchase
+  , max(case when core_listing > 0 and purchased_after_view > 0 then 1 else 0 end) as visit_with_core_purchase
+ 	, count(distinct transaction_id) as unique_transactions
+	, coalesce(sum(b.trans_gms_net),0) as attr_gms
+from 
+  agg a
+left join 
+  listing_gms b
+    on a._date = b._date
+	  and a.visit_id = b.visit_id
+	  and a.listing_id = b.listing_id
+	  and a.purchased_after_view > 0
+group by all 
+);
 
-
----------------------------------------------------------------
---find visit_id and check against weblog.events, listing views
----------------------------------------------------------------
-select * from etsy-data-warehouse-prod.analytics.listing_views where visit_id in ('OQ6dNJLCEJqWBW9wQ_PlWH8UWtRF.1721580349328.1','3_nbaW1zxlj_Gqlt2yuKGIFLPBVL.1721574776318.1') and _date >= current_date-3
--- these are listing_suggested views
-
-select * from etsy-data-warehouse-prod.analytics.listing_views 
-where visit_id in ('n-XXQOaYHiAOGkTE_A-RX2OMbbYB.1721550018504.1') 
-and _date >= current_date-3
-and listing_id = 1143385396
-
-select count(visit_id), ref_tag from etsy-data-warehouse-prod.analytics.listing_views 
-where visit_id in ('n-XXQOaYHiAOGkTE_A-RX2OMbbYB.1721550018504.1') 
-and _date >= current_date-3
-and listing_id = 1143385396
+------------------------------------
+--all together 
+------------------------------------
+insert into `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis` (
+select
+	a._date  
+	, a.platform 
+  , a.browser_platform 
+	, a.region  
+  , a.admin 
+  , a.top_channel 
+  , a.landing_event
+  --visits and impression metrics 
+  , count(distinct a.visit_id) as total_gm_visits
+  , sum(a.impressions) as total_gm_impressions
+  , sum(a.core_visits) as core_gm_visits
+  , sum(a.core_impressions) as core_gm_impressions
+  --click metrics 
+  , count(distinct b.visit_id) visits_with_gm_click
+  , sum(b.clicks) as total_gm_clicks
+  , sum(b.non_listing_clicks) as non_listing_clicks
+  , sum(b.hub_clicks) as hub_clicks
+  --listing metrics 
+  , coalesce(count(distinct case when c.visit_with_purchase>0 then c.visit_id end),0) as unique_visits_with_purchase
+  , coalesce(count(distinct case when c.visit_with_core_purchase>0 then c.visit_id end),0) as unique_visits_with_core_purchase
+  , coalesce(sum(c.total_listing_views),0) as total_listing_views
+  , coalesce(sum(c.total_core_listing_views),0) as total_core_listing_views
+  , coalesce(sum(c.listings_viewed),0) as listings_viewed
+  , coalesce(sum(c.core_listings_viewed),0) as core_listings_viewed
+  , coalesce(sum(c.visit_with_core_listing_view),0) as visits_with_core_listing_view
+  , coalesce(sum(c.total_purchased_listings),0) as total_purchased_listings
+  , coalesce(sum(c.total_purchased_core_listings),0) as total_purchased_core_listings
+ 	, coalesce(sum(c.unique_transactions),0) as unique_transactions
+	, coalesce(sum(attr_gms),0) as attr_gms
+from 
+  visits a
+left join 
+  clicks b
+    using (visit_id, _date)
+left join 
+  listing_views c
+    on a._date=c._date
+    and a.visit_id=c.visit_id
 group by all
+);
 
---n-XXQOaYHiAOGkTE_A-RX2OMbbYB.1721550018504.1, 1143385396, 6400 listing views , WRONG FROM ROLLUP
---counted 80 here
-
-------look at total day counts
-select _date, count(visit_id), count(distinct listing_id) from etsy-data-warehouse-prod.analytics.listing_views 
-where _date >= current_date-3
-and ref_tag like ('gm%')
-group by all
--- --7/20: 9975, 
--- --7/19: 10995, 6154
--- --7/21: 10411, 6088
-
-select _date, sum(total_core_listing_views), sum(core_listings_viewed) from `etsy-data-warehouse-dev.rollups.gift_mode_visits_kpis` group by all
---7/20: 9293, 7876
---7/19: 10462, 8465
---7/21: 10050, 8474
-
---95% accuracy??
+end
