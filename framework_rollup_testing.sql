@@ -113,8 +113,8 @@ where
       	or ref_tag like ('GiftTeaser%') -- Skinny Banner (Mother's Day), web
       	or ref_tag like ('hub_stashgrid_module%') --featured persona on hub page, web NEED CLARIFICATION ON THIS BC SEEMS BROAD
       	or ref_tag like ('listing_suggested_persona%')))) -- Related personas module on listing page, web
-  -- this is for boe, measures any tap event
-  or event_type in ('gift_mode_%_tapped'))
+  -- this is for boe, measures any tap event that goes to new screen
+  or event_type in ('gift_mode_ingress_tapped','gift_mode_listing_tapped','gift_mode_occasion_tapped','gift_mode_persona_tapped'))
 )
 select 
 	_date 
